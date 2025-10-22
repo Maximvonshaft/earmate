@@ -1,0 +1,258 @@
+# ============================================
+# 信息源总清单（可分拆为多个 *.yaml 后合并加载）
+# ============================================
+
+# ---------- A. 社交舆论面（最快信号层） ----------
+social_sources:
+
+  - category: "influencers"
+    platform: "X"
+    source: "official_api_or_nitter"
+    example: ["elonmusk","cz_binance","VitalikButerin","Arthur_0x","larryfink"]
+    method: "X API v2 / 企业版 或 Nitter RSS 镜像（合规）"
+    interval: "30s-60s"
+    throttle: { rpm: 60, burst: 120 }
+    weight_hint: { credibility: 0.9, impact: "very_high" }
+    tags: ["social_influencer","english","global"]
+    notes: "单条推文可致波动；需要关键词/实体抽取（$BTC/#ETF/@SEC）"
+
+  - category: "influencers"
+    platform: "Telegram"
+    source: "public_channels"
+    example: ["binance_announcements","Whale_Alert","Cointelegraph","DefiLlama","ArkhamIntel"]
+    method: "Telethon/Pyrogram 监听（公开频道，遵守 ToS）"
+    interval: "30s-60s"
+    throttle: { rpm: 120 }
+    weight_hint: { credibility: 0.8, impact: "high" }
+    tags: ["social_influencer","defi","alerts"]
+    notes: "链上异动/快讯多；适合做增速V与转发量E"
+
+  - category: "influencers"
+    platform: "Lens/Farcaster"
+    source: "graph/subgraph"
+    example: ["vitalik.lens","a16zcrypto","defi.builders"]
+    method: "GraphQL/Subgraph（速率可控）"
+    interval: "1-2min"
+    throttle: { rpm: 30 }
+    weight_hint: { credibility: 0.8, impact: "medium" }
+    tags: ["web3_social"]
+    notes: "体量小但质量高，适合作为新颖度N来源"
+
+  - category: "media_kols"
+    platform: "YouTube/TikTok"
+    source: "channels"
+    example: ["CoinBureau","AltcoinDaily","BitboyCrypto"]
+    method: "YouTube RSS + 标题/描述提取；TikTok 仅抓元数据"
+    interval: "5-10min"
+    throttle: { rpm: 10 }
+    weight_hint: { credibility: 0.6, impact: "medium" }
+    tags: ["retail_sentiment"]
+    notes: "影响散户情绪；做情绪S与话题R的补充"
+
+  - category: "dev_communities"
+    platform: "Discord (public)"
+    source: "servers"
+    example: ["solana","arbitrum","optimism","aave"]
+    method: "Discord API/Webhook（公开区）"
+    interval: "3-5min"
+    throttle: { rpm: 30 }
+    weight_hint: { credibility: 0.7, impact: "medium" }
+    tags: ["dev","governance","incident"]
+    notes: "技术/运维异常、临时公告常先发这里"
+
+  - category: "forums"
+    platform: "Reddit"
+    source: "subreddits"
+    example: ["r/cryptocurrency","r/bitcoin","r/ethfinance","r/wallstreetbets"]
+    method: "PRAW/Pushshift（合规配额）"
+    interval: "3-5min"
+    throttle: { rpm: 60 }
+    weight_hint: { credibility: 0.65, impact: "medium" }
+    tags: ["sentiment_spread"]
+    notes: "热点发酵与群体情绪扩散监测"
+
+  - category: "cn_social"
+    platform: "Weibo/Wechat"
+    source: "accounts/feeds"
+    example: ["吴说区块链","深潮TechFlow","Odaily星球日报"]
+    method: "RSS/站点摘要抓取（不存全文）"
+    interval: "5-10min"
+    throttle: { rpm: 20 }
+    weight_hint: { credibility: 0.7, impact: "regional" }
+    tags: ["cn","regional"]
+    notes: "区域市场温度计；用于区域分层权重"
+
+# ---------- B. 权威新闻与主流媒体 ----------
+news_sources:
+
+  - category: "crypto_portals"
+    platform: "Web/RSS"
+    source: "CoinDesk"
+    example: ["https://www.coindesk.com/arc/outboundfeeds/rss/"]
+    method: "RSS 优先；必要时页面摘要（遵守 robots）"
+    interval: "60s-120s"
+    throttle: { rpm: 30 }
+    weight_hint: { credibility: 0.9, impact: "high" }
+    tags: ["news","portal"]
+    notes: "权威门户，作高C来源基准"
+
+  - category: "crypto_portals"
+    platform: "Web/RSS"
+    source: "Cointelegraph"
+    example: ["https://cointelegraph.com/rss"]
+    method: "RSS"
+    interval: "60s-120s"
+    throttle: { rpm: 30 }
+    weight_hint: { credibility: 0.8, impact: "high" }
+    tags: ["news","portal"]
+    notes: "与 CoinDesk 互补，需做去重"
+
+  - category: "mainstream_media"
+    platform: "Web/RSS"
+    source: "Bloomberg/Reuters/FT/WSJ/CNBC"
+    example: ["Bloomberg Crypto RSS","Reuters Markets RSS"]
+    method: "RSS/API（企业授权优先）"
+    interval: "1-2min"
+    throttle: { rpm: 20 }
+    weight_hint: { credibility: 0.95, impact: "high" }
+    tags: ["financial_media"]
+    notes: "主流放大器，转发即提升话题级别"
+
+# ---------- C. 研究与评级 ----------
+research_sources:
+
+  - category: "institutional_research"
+    platform: "Web/API"
+    source: "Messari/Delphi/Galaxy/Glassnode_research"
+    example: ["messari.io/research","delphidigital.io"]
+    method: "RSS/API/合规数据通道"
+    interval: "10-30min"
+    throttle: { rpm: 10 }
+    weight_hint: { credibility: 0.9, impact: "medium" }
+    tags: ["research","mid_term"]
+    notes: "中期结构性信号；计入历史影响H训练"
+
+# ---------- D. 交易所市场面（直接量化） ----------
+exchange_market_feeds:
+
+  - category: "cex_market_ws"
+    platform: "WS/API"
+    source: "Binance/OKX/Bybit/Deribit/Coinbase"
+    example: ["ticker/trades/oi/funding/liquidations"]
+    method: "官方 WS（公共端点）；限频与重连"
+    interval: "realtime"
+    throttle: { conn_per_exchange: 1 }
+    weight_hint: { credibility: 1.0, impact: "direct" }
+    tags: ["market","derivatives"]
+    notes: "写入 market_tick；资金费率与清算进异常检测"
+
+  - category: "exchange_status"
+    platform: "Status/API"
+    source: "statuspages_of_exchanges"
+    example: ["status.binance.com","status.coinbase.com"]
+    method: "官方状态页/RSS"
+    interval: "60s-120s"
+    throttle: { rpm: 15 }
+    weight_hint: { credibility: 1.0, impact: "infra" }
+    tags: ["infra_risk"]
+    notes: "结合社媒投诉做 InfraRisk 告警"
+
+# ---------- E. 链上与稳定币流向 ----------
+onchain_metrics:
+
+  - category: "onchain_core"
+    platform: "Node/API"
+    source: "self_nodes_or_providers"
+    example: ["mempool/txpool","gas_fee","active_addresses"]
+    method: "自建节点或合规服务商 API"
+    interval: "15s-60s"
+    throttle: { rps: 5 }
+    weight_hint: { credibility: 0.9, impact: "direct" }
+    tags: ["onchain","l1_l2"]
+    notes: "鲸鱼转账/桥资产/合约事件等作为实体特征"
+
+  - category: "stablecoin_flows"
+    platform: "API"
+    source: "USDT/USDC issuers & explorers"
+    example: ["mint/burn","chain_flows","cex_inflow_outflow"]
+    method: "官方/数据商 API"
+    interval: "1-5min"
+    throttle: { rpm: 30 }
+    weight_hint: { credibility: 0.9, impact: "high" }
+    tags: ["liquidity","stablecoin"]
+    notes: "常领先价格与资金费率"
+
+# ---------- F. 政策、监管与执法 ----------
+regulation_policy:
+
+  - category: "regulators"
+    platform: "Web/RSS"
+    source: "SEC/CFTC/FED/USTreasury/ECB/BoE/MAS/FINMA"
+    example: ["sec.gov/news/pressreleases","federalreserve.gov/feeds"]
+    method: "官方 RSS/API；GDELT 聚合可选"
+    interval: "60s-120s"
+    throttle: { rpm: 10 }
+    weight_hint: { credibility: 1.0, impact: "systemic" }
+    tags: ["policy","etf","sanctions"]
+    notes: "ETF、制裁、牌照等系统性事件"
+
+  - category: "courts_enforcement"
+    platform: "Docs/RSS"
+    source: "PACER/court_feeds/law_firms_statements"
+    example: ["bankruptcy/indictments/settlements"]
+    method: "摘要与链接；不抓取受限全文"
+    interval: "10-30min"
+    throttle: { rpm: 5 }
+    weight_hint: { credibility: 0.95, impact: "high" }
+    tags: ["legal","enforcement"]
+    notes: "破产/清算/冻结对单体资产影响强"
+
+# ---------- G. 项目生态与社区 ----------
+project_ecosystem:
+
+  - category: "project_announcements"
+    platform: "Blog/GitHub/Medium"
+    source: "official_feeds"
+    example: ["release_notes","security_advisories","roadmap_updates"]
+    method: "RSS/API；GitHub Releases"
+    interval: "2-5min"
+    throttle: { rpm: 30 }
+    weight_hint: { credibility: 0.85, impact: "medium" }
+    tags: ["project","upgrade","security"]
+    notes: "空投/升级/漏洞公告；需高优先提醒"
+
+  - category: "community_forums"
+    platform: "Forums"
+    source: "Bitcointalk/Ethereum Magicians/Project Forums"
+    example: ["proposal_discussions","incident_threads"]
+    method: "RSS/摘要抓取"
+    interval: "5-10min"
+    throttle: { rpm: 10 }
+    weight_hint: { credibility: 0.7, impact: "medium" }
+    tags: ["community","discussion"]
+    notes: "争议发酵期的早期信号"
+
+  - category: "dao_governance"
+    platform: "Snapshot/Forum"
+    source: "Aave/Uniswap/MakerDAO/... "
+    example: ["new_proposals","voting_results","treasury_moves"]
+    method: "Snapshot API/论坛 RSS"
+    interval: "2-5min"
+    throttle: { rpm: 20 }
+    weight_hint: { credibility: 0.9, impact: "defi_specific" }
+    tags: ["governance","dao","defi"]
+    notes: "对 DeFi 资产与资金流向影响显著"
+
+# ---------- H. 宏观与传统金融 ----------
+macro_sources:
+
+  - category: "macro_calendar"
+    platform: "Calendars/API"
+    source: "CPI/PPI/Jobs/FOMC/DXY/Yields"
+    example: ["官方统计局/央行日历","DXY/UST10Y"]
+    method: "官方数据/RSS/API（例如 FRED/ECB）"
+    interval: "event_driven_or_5min"
+    throttle: { rpm: 10 }
+    weight_hint: { credibility: 0.95, impact: "macro" }
+    tags: ["macro","rates","fx"]
+    notes: "对风险偏好与流动性影响强；与 I(t) 做滞后对齐"
