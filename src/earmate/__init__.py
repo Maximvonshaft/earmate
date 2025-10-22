@@ -1,6 +1,6 @@
-"""Earmate collector simulation package."""
+"""Earmate live data collectors for ears.yaml sources."""
 
-from .config import load_sources, SourceGroup, SourceSpec
+from .config import SourceGroup, SourceSpec, load_sources
 from .runner import run_collectors
 
 __all__ = [
