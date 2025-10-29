@@ -167,6 +167,20 @@ def render_dashboard_page() -> str:
                 cursor: pointer;
               }
 
+              .secondary-button {
+                background: #e2e8f0;
+                color: #0f172a;
+                border: none;
+                padding: 0.5rem 1.25rem;
+                border-radius: 8px;
+                font-weight: 600;
+                cursor: pointer;
+              }
+
+              .secondary-button:hover {
+                background: #cbd5f5;
+              }
+
               .panel-filters {
                 padding: 0;
                 background: transparent;
@@ -351,6 +365,70 @@ def render_dashboard_page() -> str:
                 background: #f8fafc;
                 max-height: 320px;
                 overflow: auto;
+              }
+
+              .recorder-operations {
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+                padding: 1rem;
+                display: grid;
+                gap: 1rem;
+              }
+
+              .recorder-actions-grid {
+                display: grid;
+                gap: 0.75rem;
+              }
+
+              .recorder-actions-grid input,
+              .recorder-actions-grid textarea {
+                padding: 0.5rem 0.75rem;
+                border-radius: 8px;
+                border: 1px solid #cbd5f5;
+                font-family: inherit;
+              }
+
+              .recorder-actions-grid textarea {
+                resize: vertical;
+                min-height: 96px;
+              }
+
+              .recorder-options {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 1rem;
+                font-size: 0.9rem;
+              }
+
+              .recorder-options label {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+              }
+
+              .recorder-action-buttons {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.75rem;
+              }
+
+              .recorder-collapse > summary {
+                cursor: pointer;
+                font-weight: 600;
+              }
+
+              .recorder-preview {
+                margin: 0;
+                background: #0f172a;
+                color: #f8fafc;
+                padding: 1rem;
+                border-radius: 8px;
+                font-size: 0.85rem;
+                line-height: 1.5;
+                max-height: 240px;
+                overflow: auto;
+                white-space: pre-wrap;
               }
 
               .recorder-events ol {
@@ -544,6 +622,68 @@ def render_dashboard_page() -> str:
                         <p class=\"empty-state\">选择会话后可查看事件序列。</p>
                       </div>
                     </div>
+                    <div class=\"recorder-operations\">
+                      <h3 style=\"margin-top: 0;\">规则编译与发布</h3>
+                      <div class=\"recorder-actions-grid\">
+                        <label for=\"recorder-rule-name-input\">规则名称（可选）</label>
+                        <input
+                          id=\"recorder-rule-name-input\"
+                          type=\"text\"
+                          placeholder=\"默认使用会话名称\"
+                        />
+                        <label for=\"recorder-metadata-input\">元数据覆盖（可选，JSON 对象）</label>
+                        <textarea
+                          id=\"recorder-metadata-input\"
+                          placeholder='例如：{"source": "recorder"}'
+                        ></textarea>
+                        <div class=\"recorder-options\">
+                          <label>
+                            <input id=\"recorder-enable-toggle\" type=\"checkbox\" checked />
+                            发布后启用规则
+                          </label>
+                          <label>
+                            <input id=\"recorder-test-toggle\" type=\"checkbox\" checked />
+                            发布时自动试跑
+                          </label>
+                        </div>
+                      </div>
+                      <div class=\"recorder-action-buttons\">
+                        <button
+                          id=\"recorder-compile-btn\"
+                          type=\"button\"
+                          class=\"secondary-button\"
+                        >
+                          仅编译
+                        </button>
+                        <button
+                          id=\"recorder-test-btn\"
+                          type=\"button\"
+                          class=\"secondary-button\"
+                        >
+                          编译并试跑
+                        </button>
+                        <button
+                          id=\"recorder-publish-btn\"
+                          type=\"button\"
+                          class=\"primary-button\"
+                        >
+                          发布规则
+                        </button>
+                      </div>
+                      <div id=\"recorder-operation-status\" class=\"status-message\"></div>
+                      <details id=\"recorder-rule-panel\" class=\"recorder-collapse\">
+                        <summary>最近一次编译结果</summary>
+                        <pre id=\"recorder-rule-preview\" class=\"recorder-preview\">
+暂无编译结果。
+                        </pre>
+                      </details>
+                      <details id=\"recorder-test-panel\" class=\"recorder-collapse\">
+                        <summary>最近一次试跑结果</summary>
+                        <pre id=\"recorder-test-preview\" class=\"recorder-preview\">
+尚未执行试跑。
+                        </pre>
+                      </details>
+                    </div>
                   </section>
                 </div>
               </section>
@@ -577,6 +717,18 @@ def render_dashboard_page() -> str:
                   recorderEmpty: document.getElementById('recorder-empty'),
                   recorderSummary: document.getElementById('recorder-session-summary'),
                   recorderEvents: document.getElementById('recorder-events'),
+                  recorderRuleNameInput: document.getElementById('recorder-rule-name-input'),
+                  recorderMetadataInput: document.getElementById('recorder-metadata-input'),
+                  recorderEnableToggle: document.getElementById('recorder-enable-toggle'),
+                  recorderTestToggle: document.getElementById('recorder-test-toggle'),
+                  recorderCompileButton: document.getElementById('recorder-compile-btn'),
+                  recorderTestButton: document.getElementById('recorder-test-btn'),
+                  recorderPublishButton: document.getElementById('recorder-publish-btn'),
+                  recorderOperationStatus: document.getElementById('recorder-operation-status'),
+                  recorderRulePanel: document.getElementById('recorder-rule-panel'),
+                  recorderRulePreview: document.getElementById('recorder-rule-preview'),
+                  recorderTestPanel: document.getElementById('recorder-test-panel'),
+                  recorderTestPreview: document.getElementById('recorder-test-preview'),
                 };
 
                 const state = {
@@ -588,6 +740,9 @@ def render_dashboard_page() -> str:
                   sessions: [],
                   selectedSession: null,
                   activeView: 'monitoring',
+                  lastCompiledRule: null,
+                  lastTestResult: null,
+                  recorderBusy: false,
                 };
 
                 function formatDate(value) {
@@ -651,6 +806,7 @@ def render_dashboard_page() -> str:
                 function setApiKey(value) {
                   state.apiKey = value.trim();
                   updateApiKeyStatus();
+                  updateRecorderControls();
                 }
 
                 function switchView(view) {
@@ -972,6 +1128,13 @@ def render_dashboard_page() -> str:
                       requireAuth: false,
                     });
                     state.sessions = response.items || [];
+                    if (
+                      state.selectedSession &&
+                      !state.sessions.find((item) => item.id === state.selectedSession)
+                    ) {
+                      state.selectedSession = null;
+                      resetRecorderOutputs();
+                    }
                     renderRecorderSessions();
                     if (state.selectedSession) {
                       focusRecorderSession(state.selectedSession);
@@ -981,6 +1144,7 @@ def render_dashboard_page() -> str:
                     } else {
                       elements.recorderStatus.textContent = `共 ${state.sessions.length} 个会话`;
                     }
+                    updateRecorderControls();
                   } catch (error) {
                     console.error(error);
                     elements.recorderStatus.textContent = `会话列表加载失败：${error.message}`;
@@ -1016,10 +1180,15 @@ def render_dashboard_page() -> str:
                 }
 
                 function selectRecorderSession(sessionId) {
+                  const previous = state.selectedSession;
                   state.selectedSession = sessionId;
                   Array.from(elements.recorderSessions.children).forEach((node) => {
                     node.classList.toggle('active', node.dataset.sessionId === sessionId);
                   });
+                  if (previous !== sessionId) {
+                    resetRecorderOutputs();
+                  }
+                  updateRecorderControls();
                 }
 
                 async function focusRecorderSession(sessionId) {
@@ -1087,6 +1256,255 @@ def render_dashboard_page() -> str:
                   });
                   elements.recorderEvents.innerHTML = '';
                   elements.recorderEvents.append(list);
+                }
+
+                function setRecorderOperationStatus(message, isError = false) {
+                  if (!elements.recorderOperationStatus) {
+                    return;
+                  }
+                  elements.recorderOperationStatus.textContent = message || '';
+                  elements.recorderOperationStatus.classList.toggle('error', Boolean(isError));
+                }
+
+                function renderRulePreview(rule) {
+                  if (!elements.recorderRulePreview || !elements.recorderRulePanel) {
+                    return;
+                  }
+                  if (!rule) {
+                    elements.recorderRulePreview.textContent = '暂无编译结果。';
+                    elements.recorderRulePanel.open = false;
+                    return;
+                  }
+                  elements.recorderRulePreview.textContent = JSON.stringify(rule, null, 2);
+                  elements.recorderRulePanel.open = true;
+                }
+
+                function renderTestResult(result) {
+                  if (!elements.recorderTestPreview || !elements.recorderTestPanel) {
+                    return;
+                  }
+                  if (!result) {
+                    elements.recorderTestPreview.textContent = '尚未执行试跑。';
+                    elements.recorderTestPanel.open = false;
+                    return;
+                  }
+                  const records = Array.isArray(result.records) ? result.records : [];
+                  const detailRecords = Array.isArray(result.detail_records)
+                    ? result.detail_records
+                    : [];
+                  const lines = [];
+                  lines.push(`列表记录：${records.length}`);
+                  lines.push(`详情记录：${detailRecords.length}`);
+                  const metadata = result.metadata && typeof result.metadata === 'object'
+                    ? result.metadata
+                    : {};
+                  if (Object.keys(metadata).length) {
+                    lines.push('\n元数据:');
+                    Object.entries(metadata).forEach(([key, value]) => {
+                      lines.push(`  - ${key}: ${value}`);
+                    });
+                  }
+                  if (records.length) {
+                    lines.push('\n示例记录:');
+                    lines.push(JSON.stringify(records[0], null, 2));
+                  }
+                  elements.recorderTestPreview.textContent = lines.join('\n');
+                  elements.recorderTestPanel.open = true;
+                }
+
+                function resetRecorderOutputs() {
+                  state.lastCompiledRule = null;
+                  state.lastTestResult = null;
+                  renderRulePreview(null);
+                  renderTestResult(null);
+                  if (state.selectedSession) {
+                    setRecorderOperationStatus('已切换会话，请先执行编译。');
+                  } else {
+                    setRecorderOperationStatus('请选择左侧的录制会话开始操作。');
+                  }
+                }
+
+                function updateRecorderControls() {
+                  const hasSession = Boolean(state.selectedSession);
+                  const hasApiKey = Boolean(state.apiKey);
+                  const disabled = state.recorderBusy || !hasSession || !hasApiKey;
+                  [
+                    elements.recorderCompileButton,
+                    elements.recorderTestButton,
+                    elements.recorderPublishButton,
+                  ].forEach((button) => {
+                    if (button) {
+                      button.disabled = disabled;
+                    }
+                  });
+                }
+
+                function ensureRecorderReady() {
+                  if (!state.selectedSession) {
+                    setRecorderOperationStatus('请选择左侧的录制会话。', true);
+                    return false;
+                  }
+                  if (!state.apiKey) {
+                    setRecorderOperationStatus('请先在顶部输入有效的 API Key。', true);
+                    return false;
+                  }
+                  return true;
+                }
+
+                function parseMetadataInput() {
+                  if (!elements.recorderMetadataInput) {
+                    return null;
+                  }
+                  const raw = elements.recorderMetadataInput.value.trim();
+                  if (!raw) {
+                    return null;
+                  }
+                  try {
+                    const parsed = JSON.parse(raw);
+                    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                      throw new Error('请输入对象格式的 JSON');
+                    }
+                    const invalidEntry = Object.entries(parsed).find(
+                      ([, value]) => typeof value !== 'string',
+                    );
+                    if (invalidEntry) {
+                      throw new Error('元数据的值必须为字符串');
+                    }
+                    return parsed;
+                  } catch (error) {
+                    throw new Error(`元数据解析失败：${error.message}`);
+                  }
+                }
+
+                async function compileSessionOnce() {
+                  const sessionId = state.selectedSession;
+                  if (!sessionId) {
+                    throw new Error('请选择左侧的录制会话。');
+                  }
+                  const name = elements.recorderRuleNameInput
+                    ? elements.recorderRuleNameInput.value.trim()
+                    : '';
+                  const payload = name ? { name } : {};
+                  const response = await requestJSON(`/recorder/sessions/${sessionId}/compile`, {
+                    method: 'POST',
+                    body: payload,
+                    requireAuth: true,
+                  });
+                  state.lastCompiledRule = response.rule;
+                  renderRulePreview(response.rule);
+                  return response.rule;
+                }
+
+                async function handleCompile() {
+                  if (!ensureRecorderReady()) {
+                    return;
+                  }
+                  state.recorderBusy = true;
+                  updateRecorderControls();
+                  setRecorderOperationStatus('正在编译录制会话...', false);
+                  try {
+                    await compileSessionOnce();
+                    state.lastTestResult = null;
+                    renderTestResult(null);
+                    setRecorderOperationStatus('编译成功，可继续试跑或发布。');
+                  } catch (error) {
+                    console.error(error);
+                    setRecorderOperationStatus(`编译失败：${error.message}`, true);
+                  } finally {
+                    state.recorderBusy = false;
+                    updateRecorderControls();
+                  }
+                }
+
+                async function handleTestRun() {
+                  if (!ensureRecorderReady()) {
+                    return;
+                  }
+                  state.recorderBusy = true;
+                  updateRecorderControls();
+                  try {
+                    setRecorderOperationStatus('正在编译录制会话...', false);
+                    const rule = await compileSessionOnce();
+                    setRecorderOperationStatus('编译成功，正在执行试跑...', false);
+                    const result = await requestJSON('/rules/test-run', {
+                      method: 'POST',
+                      body: rule,
+                      requireAuth: true,
+                    });
+                    state.lastTestResult = result;
+                    renderTestResult(result);
+                    setRecorderOperationStatus('试跑成功，结果已更新。');
+                  } catch (error) {
+                    console.error(error);
+                    setRecorderOperationStatus(`试跑失败：${error.message}`, true);
+                  } finally {
+                    state.recorderBusy = false;
+                    updateRecorderControls();
+                  }
+                }
+
+                async function handlePublish() {
+                  if (!ensureRecorderReady()) {
+                    return;
+                  }
+                  let metadataOverride = null;
+                  try {
+                    metadataOverride = parseMetadataInput();
+                  } catch (error) {
+                    console.error(error);
+                    setRecorderOperationStatus(error.message, true);
+                    return;
+                  }
+                  state.recorderBusy = true;
+                  updateRecorderControls();
+                  try {
+                    setRecorderOperationStatus('正在发布规则...', false);
+                    const sessionId = state.selectedSession;
+                    const name = elements.recorderRuleNameInput
+                      ? elements.recorderRuleNameInput.value.trim()
+                      : '';
+                    const payload = {
+                      enable: Boolean(elements.recorderEnableToggle?.checked),
+                      test_run: Boolean(elements.recorderTestToggle?.checked),
+                    };
+                    if (name) {
+                      payload.name = name;
+                    }
+                    if (metadataOverride) {
+                      payload.metadata = metadataOverride;
+                    }
+                    const response = await requestJSON(
+                      `/recorder/sessions/${sessionId}/publish`,
+                      {
+                        method: 'POST',
+                        body: payload,
+                        requireAuth: true,
+                      },
+                    );
+                    const ruleRecord = response.rule || null;
+                    if (ruleRecord) {
+                      state.ruleCache.set(ruleRecord.id, ruleRecord);
+                      if (ruleRecord.rule) {
+                        state.lastCompiledRule = ruleRecord.rule;
+                        renderRulePreview(ruleRecord.rule);
+                      }
+                    }
+                    if (response.test_run) {
+                      state.lastTestResult = response.test_run;
+                      renderTestResult(response.test_run);
+                    } else {
+                      state.lastTestResult = null;
+                      renderTestResult(null);
+                    }
+                    const ruleId = ruleRecord?.id ? `规则已发布：${ruleRecord.id}` : '规则已发布。';
+                    setRecorderOperationStatus(ruleId);
+                  } catch (error) {
+                    console.error(error);
+                    setRecorderOperationStatus(`发布失败：${error.message}`, true);
+                  } finally {
+                    state.recorderBusy = false;
+                    updateRecorderControls();
+                  }
                 }
 
                 async function createRecorderSession() {
@@ -1158,6 +1576,10 @@ def render_dashboard_page() -> str:
                   createRecorderSession();
                 });
 
+                elements.recorderCompileButton.addEventListener('click', handleCompile);
+                elements.recorderTestButton.addEventListener('click', handleTestRun);
+                elements.recorderPublishButton.addEventListener('click', handlePublish);
+
                 elements.apiKeyInput.addEventListener('input', (event) => {
                   setApiKey(event.target.value);
                 });
@@ -1173,6 +1595,8 @@ def render_dashboard_page() -> str:
                   });
                 });
 
+                resetRecorderOutputs();
+                updateRecorderControls();
                 updateApiKeyStatus();
                 refresh();
               });
