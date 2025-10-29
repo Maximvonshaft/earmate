@@ -42,6 +42,16 @@ def render_dashboard_page() -> str:
                 color: #fff;
                 padding: 1.5rem 2rem;
                 box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+                display: grid;
+                gap: 1rem;
+              }
+
+              .header-top {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 1rem;
+                justify-content: space-between;
+                align-items: flex-start;
               }
 
               header h1 {
@@ -49,11 +59,74 @@ def render_dashboard_page() -> str:
                 font-size: 1.75rem;
               }
 
+              .header-top p {
+                margin: 0.25rem 0 0;
+                max-width: 46rem;
+              }
+
+              .view-switch {
+                display: inline-flex;
+                background-color: rgba(255, 255, 255, 0.12);
+                padding: 0.25rem;
+                border-radius: 999px;
+                gap: 0.25rem;
+              }
+
+              .view-switch button {
+                background: transparent;
+                border: none;
+                color: inherit;
+                padding: 0.35rem 1rem;
+                border-radius: 999px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: background-color 0.2s ease;
+              }
+
+              .view-switch button.active,
+              .view-switch button:hover {
+                background-color: rgba(255, 255, 255, 0.2);
+              }
+
+              .header-controls {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem 1rem;
+                align-items: center;
+              }
+
+              .header-controls label {
+                font-weight: 600;
+              }
+
+              .header-controls input {
+                padding: 0.45rem 0.75rem;
+                border-radius: 8px;
+                border: none;
+                min-width: 240px;
+              }
+
               main {
                 flex: 1;
                 padding: 2rem;
                 display: grid;
                 gap: 1.5rem;
+              }
+
+              .view {
+                display: none;
+              }
+
+              .view.active {
+                display: grid;
+                gap: 1.5rem;
+              }
+
+              .card {
+                background: #fff;
+                border-radius: 16px;
+                padding: 1.5rem;
+                box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
               }
 
               .filters,
@@ -83,7 +156,8 @@ def render_dashboard_page() -> str:
                 min-width: 240px;
               }
 
-              .filters button {
+              .filters button,
+              .primary-button {
                 background: #1f6feb;
                 color: #fff;
                 border: none;
@@ -164,9 +238,35 @@ def render_dashboard_page() -> str:
                 padding: 1rem;
                 border: 1px solid #e2e8f0;
                 font-size: 0.85rem;
-                white-space: pre-wrap;
                 overflow: auto;
                 max-height: 400px;
+                display: grid;
+                gap: 0.75rem;
+              }
+
+              .run-detail pre {
+                margin: 0;
+                white-space: pre-wrap;
+                font-family: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', monospace;
+              }
+
+              .run-detail-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+              }
+
+              .link-button {
+                background: transparent;
+                border: none;
+                color: #1f6feb;
+                cursor: pointer;
+                font-weight: 600;
+                padding: 0;
+              }
+
+              .link-button:hover {
+                text-decoration: underline;
               }
 
               .empty-state {
@@ -174,9 +274,130 @@ def render_dashboard_page() -> str:
                 font-size: 0.9rem;
               }
 
+              .status-message {
+                font-size: 0.85rem;
+              }
+
+              .status-message.error {
+                color: #f87171;
+              }
+
+              .recorder-layout {
+                display: grid;
+                grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+                gap: 1.5rem;
+              }
+
+              .recorder-sidebar {
+                display: grid;
+                gap: 1rem;
+              }
+
+              .recorder-sessions {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+                display: grid;
+                gap: 0.75rem;
+              }
+
+              .recorder-session {
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+                padding: 0.75rem;
+                cursor: pointer;
+                transition: border-color 0.2s ease, box-shadow 0.2s ease;
+              }
+
+              .recorder-session.active,
+              .recorder-session:hover {
+                border-color: #1f6feb;
+                box-shadow: 0 2px 6px rgba(31, 111, 235, 0.12);
+              }
+
+              .recorder-session h3 {
+                margin: 0 0 0.25rem 0;
+                font-size: 1rem;
+                color: #0f172a;
+              }
+
+              .recorder-session small {
+                color: #64748b;
+              }
+
+              .recorder-detail {
+                background: #fff;
+                border-radius: 16px;
+                padding: 1.5rem;
+                box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+                display: grid;
+                gap: 1rem;
+              }
+
+              .recorder-summary {
+                background: #f8fafc;
+                border-radius: 12px;
+                padding: 1rem;
+                border: 1px solid #e2e8f0;
+                white-space: pre-wrap;
+                font-family: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', monospace;
+              }
+
+              .recorder-events {
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+                padding: 1rem;
+                background: #f8fafc;
+                max-height: 320px;
+                overflow: auto;
+              }
+
+              .recorder-events ol {
+                margin: 0;
+                padding-left: 1.25rem;
+                display: grid;
+                gap: 0.5rem;
+              }
+
+              .recorder-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.75rem;
+                align-items: center;
+              }
+
+              .recorder-actions input {
+                flex: 1;
+                min-width: 180px;
+                padding: 0.5rem 0.75rem;
+                border-radius: 8px;
+                border: 1px solid #cbd5f5;
+              }
+
+              @media (max-width: 1080px) {
+                .recorder-layout {
+                  grid-template-columns: 1fr;
+                }
+              }
+
               @media (max-width: 960px) {
                 .runs-wrapper {
                   grid-template-columns: 1fr;
+                }
+              }
+
+              @media (max-width: 720px) {
+                main {
+                  padding: 1.5rem;
+                }
+
+                header {
+                  padding: 1.5rem;
+                }
+
+                .header-controls input {
+                  min-width: 200px;
                 }
               }
             </style>
@@ -184,103 +405,189 @@ def render_dashboard_page() -> str:
           </head>
           <body>
             <header>
-              <h1>EarMate 监控仪表板</h1>
-              <p>洞察采集任务的运行节奏、指标趋势与日志详情。</p>
+              <div class=\"header-top\">
+                <div>
+                  <h1>EarMate 监控仪表板</h1>
+                  <p>洞察采集任务的运行节奏、指标趋势、录制状态与日志详情。</p>
+                </div>
+                <nav class=\"view-switch\">
+                  <button
+                    type=\"button\"
+                    data-view-button=\"monitoring\"
+                    class=\"active\"
+                  >
+                    监控总览
+                  </button>
+                  <button type=\"button\" data-view-button=\"recorder\">录制工作台</button>
+                </nav>
+              </div>
+              <div class=\"header-controls\">
+                <label for=\"api-key-input\">API Key（可选）</label>
+                <input
+                  id=\"api-key-input\"
+                  type=\"password\"
+                  placeholder=\"填写以启用会话创建及发布操作\"
+                />
+                <button id=\"api-key-clear\" type=\"button\" class=\"link-button\">清除</button>
+                <span id=\"api-key-status\" class=\"status-message\"></span>
+              </div>
             </header>
             <main>
-              <section class=\"filters\">
-                <label for=\"rule-filter\">按规则筛选：</label>
-                <input id=\"rule-filter\" type=\"text\" placeholder=\"输入规则 ID（可选）\" />
-                <button id=\"refresh-btn\" type=\"button\">刷新数据</button>
-                <span id=\"last-updated\" class=\"empty-state\"></span>
-              </section>
+              <section class=\"view active\" data-view=\"monitoring\">
+                <section class=\"filters\">
+                  <label for=\"rule-filter\">按规则筛选：</label>
+                  <input id=\"rule-filter\" type=\"text\" placeholder=\"输入规则 ID（可选）\" />
+                  <button id=\"refresh-btn\" type=\"button\">刷新数据</button>
+                  <span id=\"last-updated\" class=\"empty-state\"></span>
+                </section>
 
-              <section class=\"panels\">
-                <div>
-                  <h2 class=\"panel-title\">执行概览</h2>
-                  <div class=\"summary-cards\">
-                    <div class=\"summary-card\">
-                      <h3>累计执行</h3>
-                      <strong id=\"summary-total\">-</strong>
-                    </div>
-                    <div class=\"summary-card\">
-                      <h3>成功</h3>
-                      <strong id=\"summary-succeeded\">-</strong>
-                    </div>
-                    <div class=\"summary-card\">
-                      <h3>失败</h3>
-                      <strong id=\"summary-failed\">-</strong>
-                    </div>
-                    <div class=\"summary-card\">
-                      <h3>运行中</h3>
-                      <strong id=\"summary-running\">-</strong>
-                    </div>
-                    <div class=\"summary-card\">
-                      <h3>待执行</h3>
-                      <strong id=\"summary-pending\">-</strong>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <h2 class=\"panel-title\">日维度趋势</h2>
-                  <canvas id=\"daily-chart\" height=\"160\"></canvas>
-                  <p id=\"daily-empty\" class=\"empty-state\" hidden>暂无每日聚合数据。</p>
-                </div>
-
-                <div>
-                  <h2 class=\"panel-title\">指标序列</h2>
-                  <div class=\"filters panel-filters\">
-                    <label for=\"metric-select\">选择指标：</label>
-                    <select id=\"metric-select\"></select>
-                  </div>
-                  <canvas id=\"metric-chart\" height=\"160\"></canvas>
-                  <p id=\"metric-empty\" class=\"empty-state\">暂无指标数据。</p>
-                </div>
-              </section>
-
-              <section class=\"runs-section\">
-                <h2 class=\"panel-title\">执行记录与日志</h2>
-                <div class=\"runs-wrapper\">
+                <section class=\"panels\">
                   <div>
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>执行 ID</th>
-                          <th>状态</th>
-                          <th>开始时间</th>
-                          <th>耗时(ms)</th>
-                        </tr>
-                      </thead>
-                      <tbody id=\"runs-table\"></tbody>
-                    </table>
-                    <p id=\"runs-empty\" class=\"empty-state\">暂无执行记录。</p>
+                    <h2 class=\"panel-title\">执行概览</h2>
+                    <div class=\"summary-cards\">
+                      <div class=\"summary-card\">
+                        <h3>累计执行</h3>
+                        <strong id=\"summary-total\">-</strong>
+                      </div>
+                      <div class=\"summary-card\">
+                        <h3>成功</h3>
+                        <strong id=\"summary-succeeded\">-</strong>
+                      </div>
+                      <div class=\"summary-card\">
+                        <h3>失败</h3>
+                        <strong id=\"summary-failed\">-</strong>
+                      </div>
+                      <div class=\"summary-card\">
+                        <h3>运行中</h3>
+                        <strong id=\"summary-running\">-</strong>
+                      </div>
+                      <div class=\"summary-card\">
+                        <h3>待执行</h3>
+                        <strong id=\"summary-pending\">-</strong>
+                      </div>
+                    </div>
                   </div>
-                  <aside>
-                    <h3 style=\"margin-top: 0;\">日志详情</h3>
-                    <div id=\"run-detail\" class=\"run-detail\">选择一条执行记录查看日志</div>
+
+                  <div>
+                    <h2 class=\"panel-title\">日维度趋势</h2>
+                    <canvas id=\"daily-chart\" height=\"160\"></canvas>
+                    <p id=\"daily-empty\" class=\"empty-state\" hidden>暂无每日聚合数据。</p>
+                  </div>
+
+                  <div>
+                    <h2 class=\"panel-title\">指标序列</h2>
+                    <div class=\"filters panel-filters\">
+                      <label for=\"metric-select\">选择指标：</label>
+                      <select id=\"metric-select\"></select>
+                    </div>
+                    <canvas id=\"metric-chart\" height=\"160\"></canvas>
+                    <p id=\"metric-empty\" class=\"empty-state\">暂无指标数据。</p>
+                  </div>
+                </section>
+
+                <section class=\"runs-section\">
+                  <h2 class=\"panel-title\">执行记录与日志</h2>
+                  <div class=\"runs-wrapper\">
+                    <div>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>执行 ID</th>
+                            <th>状态</th>
+                            <th>开始时间</th>
+                            <th>耗时(ms)</th>
+                          </tr>
+                        </thead>
+                        <tbody id=\"runs-table\"></tbody>
+                      </table>
+                      <p id=\"runs-empty\" class=\"empty-state\">暂无执行记录。</p>
+                    </div>
+                    <aside>
+                      <h3 style=\"margin-top: 0;\">日志详情</h3>
+                      <div id=\"run-detail\" class=\"run-detail\">
+                        <pre id=\"run-detail-text\">选择一条执行记录查看日志</pre>
+                        <div id=\"run-detail-actions\" class=\"run-detail-actions\"></div>
+                      </div>
+                    </aside>
+                  </div>
+                </section>
+              </section>
+
+              <section class=\"view\" data-view=\"recorder\">
+                <div class=\"recorder-layout\">
+                  <aside class=\"recorder-sidebar\">
+                    <div class=\"card recorder-actions\">
+                      <input id=\"recorder-name\" type=\"text\" placeholder=\"输入会话名称\" />
+                      <button id=\"recorder-create\" type=\"button\" class=\"primary-button\">
+                        新建会话
+                      </button>
+                      <button id=\"recorder-refresh\" type=\"button\" class=\"link-button\">
+                        刷新列表
+                      </button>
+                    </div>
+                    <div class=\"card\">
+                      <div class=\"status-message\" id=\"recorder-status\"></div>
+                      <ul id=\"recorder-sessions\" class=\"recorder-sessions\"></ul>
+                      <p id=\"recorder-empty\" class=\"empty-state\">暂无录制会话。</p>
+                    </div>
                   </aside>
+                  <section class=\"recorder-detail\">
+                    <div>
+                      <h2 style=\"margin-top: 0;\">会话详情</h2>
+                      <div id=\"recorder-session-summary\" class=\"recorder-summary\">
+                        选择一个会话查看详情
+                      </div>
+                    </div>
+                    <div>
+                      <h3 style=\"margin-top: 0;\">事件回放</h3>
+                      <div id=\"recorder-events\" class=\"recorder-events\">
+                        <p class=\"empty-state\">选择会话后可查看事件序列。</p>
+                      </div>
+                    </div>
+                  </section>
                 </div>
               </section>
             </main>
             <script>
               window.addEventListener('DOMContentLoaded', () => {
                 const elements = {
+                  apiKeyInput: document.getElementById('api-key-input'),
+                  apiKeyClear: document.getElementById('api-key-clear'),
+                  apiKeyStatus: document.getElementById('api-key-status'),
+                  viewButtons: Array.from(document.querySelectorAll('[data-view-button]')),
+                  views: {
+                    monitoring: document.querySelector('[data-view=\"monitoring\"]'),
+                    recorder: document.querySelector('[data-view=\"recorder\"]'),
+                  },
                   ruleInput: document.getElementById('rule-filter'),
                   refreshButton: document.getElementById('refresh-btn'),
                   lastUpdated: document.getElementById('last-updated'),
                   runsTable: document.getElementById('runs-table'),
                   runsEmpty: document.getElementById('runs-empty'),
-                  runDetail: document.getElementById('run-detail'),
+                  runDetailText: document.getElementById('run-detail-text'),
+                  runDetailActions: document.getElementById('run-detail-actions'),
                   dailyEmpty: document.getElementById('daily-empty'),
                   metricSelect: document.getElementById('metric-select'),
                   metricEmpty: document.getElementById('metric-empty'),
+                  recorderName: document.getElementById('recorder-name'),
+                  recorderCreate: document.getElementById('recorder-create'),
+                  recorderRefresh: document.getElementById('recorder-refresh'),
+                  recorderStatus: document.getElementById('recorder-status'),
+                  recorderSessions: document.getElementById('recorder-sessions'),
+                  recorderEmpty: document.getElementById('recorder-empty'),
+                  recorderSummary: document.getElementById('recorder-session-summary'),
+                  recorderEvents: document.getElementById('recorder-events'),
                 };
 
                 const state = {
                   dailyChart: null,
                   metricChart: null,
                   series: [],
+                  apiKey: '',
+                  ruleCache: new Map(),
+                  sessions: [],
+                  selectedSession: null,
+                  activeView: 'monitoring',
                 };
 
                 function formatDate(value) {
@@ -301,12 +608,67 @@ def render_dashboard_page() -> str:
                   return Math.round(value);
                 }
 
-                async function fetchJSON(url) {
-                  const response = await fetch(url);
+                async function requestJSON(url, options = {}) {
+                  const config = { method: 'GET', headers: new Headers(), ...options };
+                  const requiresBody = config.body && typeof config.body !== 'string';
+                  if (requiresBody) {
+                    config.body = JSON.stringify(config.body);
+                    config.headers.set('Content-Type', 'application/json');
+                  }
+                  const shouldAttachKey = Boolean(
+                    options.requireAuth || (state.apiKey && options.requireAuth !== false),
+                  );
+                  if (shouldAttachKey && state.apiKey) {
+                    config.headers.set('X-API-Key', state.apiKey);
+                  }
+                  const response = await fetch(url, config);
                   if (!response.ok) {
-                    throw new Error(`请求失败: ${response.status}`);
+                    let message = `请求失败: ${response.status}`;
+                    try {
+                      const payload = await response.json();
+                      message = payload.detail || JSON.stringify(payload);
+                    } catch (parseError) {
+                      // ignore
+                    }
+                    throw new Error(message);
+                  }
+                  if (response.status === 204) {
+                    return null;
                   }
                   return response.json();
+                }
+
+                function updateApiKeyStatus() {
+                  if (state.apiKey) {
+                    elements.apiKeyStatus.textContent = '已注入 API Key，可执行受保护操作';
+                    elements.apiKeyStatus.classList.remove('error');
+                  } else {
+                    elements.apiKeyStatus.textContent = '未配置 API Key，仅支持查询接口';
+                    elements.apiKeyStatus.classList.remove('error');
+                  }
+                }
+
+                function setApiKey(value) {
+                  state.apiKey = value.trim();
+                  updateApiKeyStatus();
+                }
+
+                function switchView(view) {
+                  if (!view || state.activeView === view) {
+                    return;
+                  }
+                  state.activeView = view;
+                  Object.entries(elements.views).forEach(([key, node]) => {
+                    if (node) {
+                      node.classList.toggle('active', key === view);
+                    }
+                  });
+                  elements.viewButtons.forEach((button) => {
+                    button.classList.toggle('active', button.dataset.viewButton === view);
+                  });
+                  if (view === 'recorder') {
+                    loadRecorderSessions();
+                  }
                 }
 
                 function renderSummary(summary) {
@@ -372,31 +734,6 @@ def render_dashboard_page() -> str:
                   }
                 }
 
-                function renderMetricOptions(series) {
-                  elements.metricSelect.innerHTML = '';
-                  state.series = series || [];
-                  if (!state.series.length) {
-                    elements.metricEmpty.hidden = false;
-                    const option = document.createElement('option');
-                    option.textContent = '无可用指标';
-                    option.value = '';
-                    elements.metricSelect.append(option);
-                    elements.metricSelect.disabled = true;
-                    renderMetricSeries(null);
-                    return;
-                  }
-                  elements.metricEmpty.hidden = true;
-                  elements.metricSelect.disabled = false;
-                  state.series.forEach((item, index) => {
-                    const option = document.createElement('option');
-                    option.textContent = item.name;
-                    option.value = String(index);
-                    elements.metricSelect.append(option);
-                  });
-                  elements.metricSelect.value = '0';
-                  renderMetricSeries(0);
-                }
-
                 function renderMetricSeries(index) {
                   const canvas = document.getElementById('metric-chart');
                   const ctx = canvas.getContext('2d');
@@ -458,6 +795,31 @@ def render_dashboard_page() -> str:
                   }
                 }
 
+                function renderMetricOptions(series) {
+                  elements.metricSelect.innerHTML = '';
+                  state.series = series || [];
+                  if (!state.series.length) {
+                    elements.metricEmpty.hidden = false;
+                    const option = document.createElement('option');
+                    option.textContent = '无可用指标';
+                    option.value = '';
+                    elements.metricSelect.append(option);
+                    elements.metricSelect.disabled = true;
+                    renderMetricSeries(null);
+                    return;
+                  }
+                  elements.metricEmpty.hidden = true;
+                  elements.metricSelect.disabled = false;
+                  state.series.forEach((item, index) => {
+                    const option = document.createElement('option');
+                    option.textContent = item.name;
+                    option.value = String(index);
+                    elements.metricSelect.append(option);
+                  });
+                  elements.metricSelect.value = '0';
+                  renderMetricSeries(0);
+                }
+
                 function renderRuns(runs) {
                   elements.runsTable.innerHTML = '';
                   if (!runs || !runs.length) {
@@ -469,6 +831,7 @@ def render_dashboard_page() -> str:
                   runs.forEach((run) => {
                     const row = document.createElement('tr');
                     row.dataset.runId = run.id;
+                    row.dataset.ruleId = run.rule_id;
                     row.innerHTML = `
                       <td>${run.id}</td>
                       <td>${run.status}</td>
@@ -482,7 +845,9 @@ def render_dashboard_page() -> str:
 
                 async function loadDashboard(ruleId) {
                   const query = ruleId ? `?rule_id=${encodeURIComponent(ruleId)}` : '';
-                  const dashboard = await fetchJSON(`/monitoring/dashboard${query}`);
+                  const dashboard = await requestJSON(`/monitoring/dashboard${query}`, {
+                    requireAuth: false,
+                  });
                   renderSummary(dashboard.summary || {});
                   renderDaily(dashboard.daily || []);
                   renderMetricOptions(dashboard.series || []);
@@ -490,7 +855,9 @@ def render_dashboard_page() -> str:
 
                 async function loadRuns(ruleId) {
                   const query = ruleId ? `?rule_id=${encodeURIComponent(ruleId)}` : '';
-                  const runs = await fetchJSON(`/monitoring/runs${query}`);
+                  const runs = await requestJSON(`/monitoring/runs${query}`, {
+                    requireAuth: false,
+                  });
                   renderRuns(runs.items || []);
                 }
 
@@ -506,30 +873,32 @@ def render_dashboard_page() -> str:
                   }
                 }
 
-                elements.refreshButton.addEventListener('click', refresh);
-                elements.ruleInput.addEventListener('keyup', (event) => {
-                  if (event.key === 'Enter') {
-                    refresh();
+                async function loadRule(ruleId) {
+                  if (!ruleId) {
+                    return null;
                   }
-                });
-
-                elements.metricSelect.addEventListener('change', (event) => {
-                  const { value } = event.target;
-                  if (value === '') {
-                    renderMetricSeries(null);
-                  } else {
-                    renderMetricSeries(Number.parseInt(value, 10));
+                  if (state.ruleCache.has(ruleId)) {
+                    return state.ruleCache.get(ruleId);
                   }
-                });
-
-                elements.runsTable.addEventListener('click', async (event) => {
-                  const row = event.target.closest('tr[data-run-id]');
-                  if (!row) {
-                    return;
-                  }
-                  const runId = row.dataset.runId;
                   try {
-                    const detail = await fetchJSON(`/monitoring/runs/${runId}`);
+                    const rule = await requestJSON(`/rules/${ruleId}`, { requireAuth: false });
+                    state.ruleCache.set(ruleId, rule);
+                    return rule;
+                  } catch (error) {
+                    console.error(error);
+                    return null;
+                  }
+                }
+
+                async function handleRunSelection(row) {
+                  const runId = row.dataset.runId;
+                  const ruleId = row.dataset.ruleId;
+                  elements.runDetailText.textContent = '加载中...';
+                  elements.runDetailActions.innerHTML = '';
+                  try {
+                    const detail = await requestJSON(`/monitoring/runs/${runId}`, {
+                      requireAuth: false,
+                    });
                     const lines = [];
                     lines.push(`执行 ID: ${detail.id}`);
                     lines.push(`规则 ID: ${detail.rule_id}`);
@@ -537,6 +906,9 @@ def render_dashboard_page() -> str:
                     lines.push(`开始时间: ${formatDate(detail.started_at || detail.created_at)}`);
                     lines.push(`结束时间: ${formatDate(detail.finished_at || detail.updated_at)}`);
                     lines.push(`耗时(ms): ${formatDuration(detail.duration_ms)}`);
+                    if (detail.execution_id) {
+                      lines.push(`执行结果 ID: ${detail.execution_id}`);
+                    }
                     if (detail.metrics && Object.keys(detail.metrics).length) {
                       lines.push('指标:');
                       Object.entries(detail.metrics).forEach(([key, value]) => {
@@ -556,13 +928,252 @@ def render_dashboard_page() -> str:
                     } else {
                       lines.push('\n日志: 暂无日志记录');
                     }
-                    elements.runDetail.textContent = lines.join('\n');
+
+                    let recorderSessionId = null;
+                    if (ruleId) {
+                      const rule = await loadRule(ruleId);
+                      const metadata = rule?.rule?.metadata || {};
+                      const metadataEntries = Object.entries(metadata);
+                      if (metadataEntries.length) {
+                        lines.push('\n规则元数据:');
+                        metadataEntries.forEach(([key, value]) => {
+                          lines.push(`  - ${key}: ${value}`);
+                        });
+                      }
+                      if (typeof metadata.recorder_session === 'string') {
+                        recorderSessionId = metadata.recorder_session;
+                      }
+                    }
+
+                    elements.runDetailText.textContent = lines.join('\n');
+                    if (recorderSessionId) {
+                      const actionButton = document.createElement('button');
+                      actionButton.type = 'button';
+                      actionButton.className = 'link-button';
+                      actionButton.textContent =
+                        `查看关联录制会话 (${recorderSessionId.slice(0, 8)}…)`;
+                      actionButton.addEventListener('click', () => {
+                        switchView('recorder');
+                        focusRecorderSession(recorderSessionId);
+                      });
+                      elements.runDetailActions.append(actionButton);
+                    }
                   } catch (error) {
                     console.error(error);
-                    elements.runDetail.textContent = '日志加载失败，请稍后重试。';
+                    elements.runDetailText.textContent = '日志加载失败，请稍后重试。';
+                  }
+                }
+
+                async function loadRecorderSessions() {
+                  try {
+                    elements.recorderStatus.textContent = '加载会话列表中...';
+                    elements.recorderStatus.classList.remove('error');
+                    const response = await requestJSON('/recorder/sessions', {
+                      requireAuth: false,
+                    });
+                    state.sessions = response.items || [];
+                    renderRecorderSessions();
+                    if (state.selectedSession) {
+                      focusRecorderSession(state.selectedSession);
+                    }
+                    if (!state.sessions.length) {
+                      elements.recorderStatus.textContent = '暂无会话，使用 API Key 可创建新会话。';
+                    } else {
+                      elements.recorderStatus.textContent = `共 ${state.sessions.length} 个会话`;
+                    }
+                  } catch (error) {
+                    console.error(error);
+                    elements.recorderStatus.textContent = `会话列表加载失败：${error.message}`;
+                    elements.recorderStatus.classList.add('error');
+                  }
+                }
+
+                function renderRecorderSessions() {
+                  elements.recorderSessions.innerHTML = '';
+                  if (!state.sessions.length) {
+                    elements.recorderEmpty.hidden = false;
+                    return;
+                  }
+                  elements.recorderEmpty.hidden = true;
+                  const fragment = document.createDocumentFragment();
+                  state.sessions.forEach((session) => {
+                    const item = document.createElement('li');
+                    item.className = 'recorder-session';
+                    item.dataset.sessionId = session.id;
+                    if (state.selectedSession === session.id) {
+                      item.classList.add('active');
+                    }
+                    item.innerHTML = `
+                      <h3>${session.name || '未命名会话'}</h3>
+                      <div>${session.metadata?.entry || session.entry || '未配置入口 URL'}</div>
+                      <small>
+                        事件数：${session.event_count} · 创建时间：${formatDate(session.created_at)}
+                      </small>
+                    `;
+                    fragment.append(item);
+                  });
+                  elements.recorderSessions.append(fragment);
+                }
+
+                function selectRecorderSession(sessionId) {
+                  state.selectedSession = sessionId;
+                  Array.from(elements.recorderSessions.children).forEach((node) => {
+                    node.classList.toggle('active', node.dataset.sessionId === sessionId);
+                  });
+                }
+
+                async function focusRecorderSession(sessionId) {
+                  if (!sessionId) {
+                    return;
+                  }
+                  if (!state.sessions.find((item) => item.id === sessionId)) {
+                    await loadRecorderSessions();
+                  }
+                  selectRecorderSession(sessionId);
+                  await loadRecorderDetail(sessionId);
+                }
+
+                async function loadRecorderDetail(sessionId) {
+                  elements.recorderSummary.textContent = '加载会话详情...';
+                  elements.recorderEvents.innerHTML =
+                    '<p class="empty-state">加载事件序列中...</p>';
+                  try {
+                    const [session, playback] = await Promise.all([
+                      requestJSON(`/recorder/sessions/${sessionId}`, {
+                        requireAuth: false,
+                      }),
+                      requestJSON(`/recorder/sessions/${sessionId}/playback`, {
+                        requireAuth: false,
+                      }),
+                    ]);
+                    renderRecorderDetail(session, playback.events || []);
+                  } catch (error) {
+                    console.error(error);
+                    elements.recorderSummary.textContent = '会话详情加载失败，请稍后重试。';
+                    elements.recorderEvents.innerHTML =
+                      `<p class="empty-state">${error.message}</p>`;
+                  }
+                }
+
+                function renderRecorderDetail(session, events) {
+                  const lines = [];
+                  lines.push(`会话 ID: ${session.id}`);
+                  lines.push(`名称: ${session.name || '未命名会话'}`);
+                  lines.push(`入口 URL: ${session.entry || '未设置'}`);
+                  lines.push(`事件总数: ${session.event_count}`);
+                  lines.push(`创建时间: ${formatDate(session.created_at)}`);
+                  lines.push(`最近更新时间: ${formatDate(session.updated_at)}`);
+                  if (session.metadata && Object.keys(session.metadata).length) {
+                    lines.push('\n元数据:');
+                    Object.entries(session.metadata).forEach(([key, value]) => {
+                      lines.push(`  - ${key}: ${value}`);
+                    });
+                  }
+                  elements.recorderSummary.textContent = lines.join('\n');
+
+                  if (!events.length) {
+                    elements.recorderEvents.innerHTML = '<p class="empty-state">暂无录制事件。</p>';
+                    return;
+                  }
+                  const list = document.createElement('ol');
+                  events.forEach((event) => {
+                    const item = document.createElement('li');
+                    item.innerHTML = `
+                      <strong>${event.type}</strong>
+                      <div><small>${formatDate(event.timestamp)}</small></div>
+                      <pre>${JSON.stringify(event.payload, null, 2)}</pre>
+                    `;
+                    list.append(item);
+                  });
+                  elements.recorderEvents.innerHTML = '';
+                  elements.recorderEvents.append(list);
+                }
+
+                async function createRecorderSession() {
+                  const name = elements.recorderName.value.trim();
+                  try {
+                    const payload = name ? { name } : {};
+                    const response = await requestJSON('/recorder/sessions', {
+                      method: 'POST',
+                      body: payload,
+                      requireAuth: true,
+                    });
+                    elements.recorderName.value = '';
+                    state.selectedSession = response.id;
+                    await loadRecorderSessions();
+                    elements.recorderStatus.textContent = `会话已创建：${response.id}`;
+                    elements.recorderStatus.classList.remove('error');
+                    focusRecorderSession(response.id);
+                  } catch (error) {
+                    console.error(error);
+                    elements.recorderStatus.textContent = `创建失败：${error.message}`;
+                    elements.recorderStatus.classList.add('error');
+                  }
+                }
+
+                elements.refreshButton.addEventListener('click', refresh);
+                elements.ruleInput.addEventListener('keyup', (event) => {
+                  if (event.key === 'Enter') {
+                    refresh();
                   }
                 });
 
+                elements.metricSelect.addEventListener('change', (event) => {
+                  const { value } = event.target;
+                  if (value === '') {
+                    renderMetricSeries(null);
+                  } else {
+                    renderMetricSeries(Number.parseInt(value, 10));
+                  }
+                });
+
+                elements.runsTable.addEventListener('click', (event) => {
+                  const row = event.target.closest('tr[data-run-id]');
+                  if (!row) {
+                    return;
+                  }
+                  handleRunSelection(row);
+                });
+
+                elements.recorderSessions.addEventListener('click', (event) => {
+                  const item = event.target.closest('li[data-session-id]');
+                  if (!item) {
+                    return;
+                  }
+                  const { sessionId } = item.dataset;
+                  selectRecorderSession(sessionId);
+                  loadRecorderDetail(sessionId);
+                });
+
+                elements.recorderRefresh.addEventListener('click', () => {
+                  loadRecorderSessions();
+                });
+
+                elements.recorderCreate.addEventListener('click', () => {
+                  if (!state.apiKey) {
+                    elements.recorderStatus.textContent = '请先在顶部输入有效的 API Key';
+                    elements.recorderStatus.classList.add('error');
+                    return;
+                  }
+                  createRecorderSession();
+                });
+
+                elements.apiKeyInput.addEventListener('input', (event) => {
+                  setApiKey(event.target.value);
+                });
+
+                elements.apiKeyClear.addEventListener('click', () => {
+                  elements.apiKeyInput.value = '';
+                  setApiKey('');
+                });
+
+                elements.viewButtons.forEach((button) => {
+                  button.addEventListener('click', () => {
+                    switchView(button.dataset.viewButton);
+                  });
+                });
+
+                updateApiKeyStatus();
                 refresh();
               });
             </script>
