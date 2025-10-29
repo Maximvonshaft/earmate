@@ -206,6 +206,16 @@ def test_monitoring_endpoints_expose_run_state() -> None:
     assert summary_response.status_code == 200
 
 
+def test_dashboard_page_returns_html() -> None:
+    client = build_client()
+
+    response = client.get("/dashboard")
+    assert response.status_code == 200
+    body = response.text
+    assert "EarMate 监控仪表板" in body
+    assert "monitoring/dashboard" in body
+
+
 def test_recorder_session_endpoints() -> None:
     client = build_client()
 
