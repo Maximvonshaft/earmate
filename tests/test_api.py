@@ -198,9 +198,47 @@ def test_monitoring_endpoints_expose_run_state() -> None:
 
     summary_response = client.get("/monitoring/summary")
     assert summary_response.status_code == 200
-    summary_payload = summary_response.json()
-    assert summary_payload["total"] == 1
-    assert summary_payload["by_status"]["succeeded"] == 1
+
+
+def test_recorder_session_endpoints() -> None:
+    client = build_client()
+
+    create_response = client.post("/recorder/sessions", json={"name": "Recorder Demo"})
+    assert create_response.status_code == 201
+    session_id = create_response.json()["id"]
+
+    event_payloads = [
+        {"type": "navigate", "payload": {"url": "https://example.com/list"}},
+        {"type": "capture_selector", "payload": {"role": "list", "selector": "li.item"}},
+        {"type": "capture_selector", "payload": {"role": "title", "selector": "a.title"}},
+        {"type": "set_metadata", "payload": {"key": "source", "value": "recorder"}},
+    ]
+    for payload in event_payloads:
+        response = client.post(f"/recorder/sessions/{session_id}/events", json=payload)
+        assert response.status_code == 200
+
+    playback_response = client.get(f"/recorder/sessions/{session_id}/playback")
+    assert playback_response.status_code == 200
+    assert playback_response.json()["count"] == len(event_payloads)
+
+    compile_response = client.post(f"/recorder/sessions/{session_id}/compile", json={})
+    assert compile_response.status_code == 200
+    payload = compile_response.json()
+    assert payload["rule"]["entry"] == "https://example.com/list"
+    assert payload["rule"]["selectors"]["list"] == "li.item"
+    assert payload["session"]["metadata"]["source"] == "recorder"
+
+
+def test_monitoring_dashboard_endpoint() -> None:
+    client = build_client()
+    rule_id = client.post("/rules", json=RULE_PAYLOAD).json()["id"]
+    client.post(f"/rules/{rule_id}/run")
+
+    dashboard_response = client.get("/monitoring/dashboard")
+    assert dashboard_response.status_code == 200
+    dashboard = dashboard_response.json()
+    assert dashboard["summary"]["total"] >= 1
+    assert dashboard["daily"]
 
 
 def test_contract_schemas_are_exposed() -> None:

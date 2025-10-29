@@ -99,3 +99,44 @@ def test_rule_service_failure_is_recorded(
     assert runs
     assert runs[0].status is TaskStatus.FAILED
     assert "boom" in (runs[0].error_message or "")
+
+
+def test_dashboard_aggregates_runs(monitoring_service: MonitoringService) -> None:
+    repository = monitoring_service.repository
+    run_success = repository.create_run("rule-a")
+    repository.mark_running(run_success.id)
+    repository.mark_completed(
+        run_success.id,
+        status=TaskStatus.SUCCEEDED,
+        metrics={"items": 3.0},
+        execution_id="exec-1",
+    )
+
+    run_failed = repository.create_run("rule-a")
+    repository.mark_running(run_failed.id)
+    repository.mark_completed(run_failed.id, status=TaskStatus.FAILED, error_message="timeout")
+
+    dashboard = monitoring_service.dashboard("rule-a")
+    assert dashboard["summary"]["total"] == 2
+    assert dashboard["daily"]
+    assert dashboard["daily"][0]["by_status"][TaskStatus.SUCCEEDED.value] == 1
+    assert dashboard["series"][0]["name"] == "items"
+    assert dashboard["series"][0]["points"][0]["run_id"] == run_success.id
+
+
+def test_export_and_import_state_roundtrip(monitoring_service: MonitoringService) -> None:
+    repository = monitoring_service.repository
+    run = repository.create_run("rule-x")
+    repository.mark_running(run.id)
+    repository.append_log(run.id, "info", "start")
+    repository.mark_completed(run.id, status=TaskStatus.SUCCEEDED)
+
+    snapshot = monitoring_service.export_state()
+    assert snapshot["runs"]
+
+    restored = MonitoringService(MonitoringRepository())
+    restored.import_state(snapshot)
+
+    restored_runs = list(restored.list_runs())
+    assert restored_runs
+    assert restored_runs[0].id == run.id

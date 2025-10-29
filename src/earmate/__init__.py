@@ -2,6 +2,8 @@
 
 from .api import create_app
 from .engine import ExecutionResult, RuleExecutor
+from .monitoring import MonitoringRepository, MonitoringService, TaskStatus
+from .recorder import RecorderRepository, RecorderService
 from .rule_manager import RuleNotFoundError, RuleRecord, RuleRepository, RuleService
 from .scheduler import InMemoryScheduler, ScheduledRule, SchedulerEmpty
 from .schema import (
@@ -42,4 +44,9 @@ __all__ = [
     "ResultRepository",
     "ExecutionRecord",
     "ExecutionNotFoundError",
+    "MonitoringRepository",
+    "MonitoringService",
+    "TaskStatus",
+    "RecorderRepository",
+    "RecorderService",
 ]

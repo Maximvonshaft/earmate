@@ -7,6 +7,12 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 from .engine import ExecutionResult
+from .recorder import (
+    RecorderEvent,
+    RecorderPagination,
+    RecorderSession,
+    summarise_events,
+)
 from .schema import (
     Action,
     DeduplicationConfig,
@@ -626,3 +632,152 @@ class ExecutionResultContract:
     @staticmethod
     def json_schema() -> Dict[str, Any]:
         return EXECUTION_RESULT_SCHEMA
+
+
+RECORDER_EVENT_SCHEMA: Dict[str, Any] = {
+    "title": "RecorderEvent",
+    "type": "object",
+    "required": ["type", "payload"],
+    "properties": {
+        "type": {"type": "string"},
+        "payload": {"type": "object"},
+    },
+    "additionalProperties": False,
+}
+
+
+def _pagination_to_payload(pagination: Optional[RecorderPagination]) -> Optional[Dict[str, Any]]:
+    if pagination is None:
+        return None
+    payload: Dict[str, Any] = {"type": pagination.type}
+    if pagination.selector is not None:
+        payload["selector"] = pagination.selector
+    if pagination.max_pages is not None:
+        payload["max_pages"] = pagination.max_pages
+    return payload
+
+
+def _events_to_payload(events: List[RecorderEvent]) -> List[Dict[str, Any]]:
+    return [
+        {
+            "type": event.type,
+            "payload": event.payload,
+            "timestamp": event.timestamp.isoformat().replace("+00:00", "Z"),
+        }
+        for event in events
+    ]
+
+
+RECORDER_SESSION_SCHEMA: Dict[str, Any] = {
+    "title": "RecorderSession",
+    "type": "object",
+    "required": ["id", "created_at", "updated_at", "selectors", "actions", "events"],
+    "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "created_at": {"type": "string", "format": "date-time"},
+        "updated_at": {"type": "string", "format": "date-time"},
+        "entry": {"type": "string", "format": "uri"},
+        "selectors": {
+            "type": "object",
+            "additionalProperties": {"type": "string"},
+        },
+        "detail": {
+            "type": "object",
+            "properties": {
+                "selector": {"type": "string"},
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["name", "selector"],
+                        "properties": {
+                            "name": {"type": "string"},
+                            "selector": {"type": "string"},
+                        },
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "additionalProperties": False,
+        },
+        "pagination": {
+            "type": "object",
+            "properties": {
+                "type": {"type": "string"},
+                "selector": {"type": "string"},
+                "max_pages": {"type": "integer"},
+            },
+            "required": ["type"],
+            "additionalProperties": False,
+        },
+        "actions": {
+            "type": "array",
+            "items": RULE_CONTRACT_SCHEMA["properties"]["actions"]["items"],
+        },
+        "metadata": {"type": "object", "additionalProperties": {"type": "string"}},
+        "events": {"type": "array", "items": RECORDER_EVENT_SCHEMA},
+        "event_count": {"type": "integer", "minimum": 0},
+        "analytics": {
+            "type": "object",
+            "properties": {
+                "count": {"type": "integer", "minimum": 0},
+                "types": {
+                    "type": "object",
+                    "additionalProperties": {"type": "integer", "minimum": 0},
+                },
+                "duration_seconds": {"type": "number", "minimum": 0},
+            },
+            "additionalProperties": False,
+        },
+    },
+    "additionalProperties": False,
+}
+
+
+@dataclass
+class RecorderSessionContract:
+    """Serialize :class:`RecorderSession` into a front-end friendly payload."""
+
+    session: RecorderSession
+
+    def to_payload(self) -> Dict[str, Any]:
+        detail_payload: Dict[str, Any] = {
+            "selector": self.session.detail_selector,
+            "fields": [
+                {"name": name, "selector": selector}
+                for name, selector in sorted(self.session.detail_fields.items())
+            ],
+        }
+        payload: Dict[str, Any] = {
+            "id": self.session.id,
+            "name": self.session.name,
+            "created_at": self.session.created_at.isoformat().replace("+00:00", "Z"),
+            "updated_at": self.session.updated_at.isoformat().replace("+00:00", "Z"),
+            "entry": self.session.entry,
+            "selectors": dict(self.session.selectors),
+            "detail": detail_payload,
+            "pagination": _pagination_to_payload(self.session.pagination),
+            "actions": [
+                {
+                    "type": action.type,
+                    "selector": action.selector,
+                    "event": action.event,
+                    "fields": list(action.fields),
+                }
+                for action in self.session.actions
+            ],
+            "metadata": dict(self.session.metadata),
+            "events": _events_to_payload(self.session.events),
+            "event_count": self.session.event_count,
+            "analytics": summarise_events(self.session.events),
+        }
+        return payload
+
+    @staticmethod
+    def json_schema() -> Dict[str, Any]:
+        return RECORDER_SESSION_SCHEMA
+
+    @staticmethod
+    def event_schema() -> Dict[str, Any]:
+        return RECORDER_EVENT_SCHEMA

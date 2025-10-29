@@ -9,8 +9,20 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Response, status
 
-from .contracts import ContractValidationError, ExecutionResultContract, RuleContract
+from .contracts import (
+    ContractValidationError,
+    ExecutionResultContract,
+    RecorderSessionContract,
+    RuleContract,
+)
 from .monitoring import MonitoringRepository, MonitoringService, TaskRunNotFoundError
+from .recorder import (
+    InvalidRecorderEvent,
+    RecorderRepository,
+    RecorderService,
+    RecorderSessionNotFoundError,
+    RecorderSessionValidationError,
+)
 from .rule_manager import RuleNotFoundError, RuleRepository, RuleService
 from .scheduler import InMemoryScheduler
 from .schema import RuleSchema
@@ -24,6 +36,7 @@ def create_app(
     scheduler: Optional[InMemoryScheduler] = None,
     result_repository: Optional[ResultRepository] = None,
     monitoring: Optional[MonitoringService] = None,
+    recorder: Optional[RecorderService] = None,
 ) -> FastAPI:
     """Construct a FastAPI application with in-memory services by default."""
 
@@ -54,6 +67,8 @@ def create_app(
         monitoring_service = svc.monitoring
     sched = scheduler or InMemoryScheduler()
 
+    recorder_service = recorder or RecorderService(RecorderRepository())
+
     app = FastAPI(title="EarMate API", version="0.1.0")
     app.state.repository = svc.repository
     app.state.service = svc
@@ -61,6 +76,7 @@ def create_app(
     app.state.results = results
     app.state.monitoring = monitoring_service
     app.state.monitoring_repository = monitoring_repo
+    app.state.recorder = recorder_service
 
     _sync_scheduler(app)
 
@@ -71,6 +87,95 @@ def create_app(
     @app.get("/contracts/test-run")
     def execution_result_schema() -> Dict[str, Any]:
         return {"json_schema": ExecutionResultContract.json_schema()}
+
+    @app.get("/contracts/recorder-session")
+    def recorder_session_schema() -> Dict[str, Any]:
+        return {
+            "session": RecorderSessionContract.json_schema(),
+            "event": RecorderSessionContract.event_schema(),
+        }
+
+    @app.get("/recorder/sessions")
+    def list_sessions() -> Dict[str, Any]:
+        sessions = [
+            RecorderSessionContract(session=session).to_payload()
+            for session in app.state.recorder.list_sessions()
+        ]
+        return {"items": sessions, "count": len(sessions)}
+
+    @app.post("/recorder/sessions", status_code=status.HTTP_201_CREATED)
+    def create_session(payload: Dict[str, Any]) -> Dict[str, Any]:
+        name = payload.get("name")
+        if name is not None and (not isinstance(name, str) or not name.strip()):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="name must be non-empty string",
+            )
+        metadata = _parse_metadata(payload.get("metadata"))
+        session = app.state.recorder.create_session(
+            name=name.strip() if isinstance(name, str) else None,
+            metadata=metadata,
+        )
+        return RecorderSessionContract(session=session).to_payload()
+
+    @app.get("/recorder/sessions/{session_id}")
+    def get_session(session_id: str) -> Dict[str, Any]:
+        try:
+            session = app.state.recorder.get_session(session_id)
+        except RecorderSessionNotFoundError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        return RecorderSessionContract(session=session).to_payload()
+
+    @app.post("/recorder/sessions/{session_id}/events")
+    def append_event(session_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            session = app.state.recorder.record_event(session_id, payload)
+        except RecorderSessionNotFoundError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        except InvalidRecorderEvent as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+        return RecorderSessionContract(session=session).to_payload()
+
+    @app.get("/recorder/sessions/{session_id}/playback")
+    def playback(session_id: str) -> Dict[str, Any]:
+        try:
+            steps = app.state.recorder.playback(session_id)
+        except RecorderSessionNotFoundError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        return {"events": steps, "count": len(steps)}
+
+    @app.post("/recorder/sessions/{session_id}/compile")
+    def compile_session(
+        session_id: str,
+        payload: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        payload = payload or {}
+        name = payload.get("name")
+        if name is not None and (not isinstance(name, str) or not name.strip()):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="name must be non-empty string",
+            )
+        try:
+            rule = app.state.recorder.compile_session(
+                session_id,
+                name=name.strip() if isinstance(name, str) else None,
+            )
+            session = app.state.recorder.get_session(session_id)
+        except RecorderSessionNotFoundError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        except RecorderSessionValidationError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+        return {
+            "session": RecorderSessionContract(session=session).to_payload(),
+            "rule": RuleContract(rule=rule).to_payload(),
+        }
 
     @app.get("/rules")
     def list_rules() -> Dict[str, Any]:
@@ -213,8 +318,12 @@ def create_app(
         return _run_to_dict(run)
 
     @app.get("/monitoring/summary")
-    def monitoring_summary() -> Dict[str, Any]:
-        return app.state.monitoring.summary()
+    def monitoring_summary(rule_id: Optional[str] = None) -> Dict[str, Any]:
+        return app.state.monitoring.summary(rule_id)
+
+    @app.get("/monitoring/dashboard")
+    def monitoring_dashboard(rule_id: Optional[str] = None) -> Dict[str, Any]:
+        return app.state.monitoring.dashboard(rule_id)
 
     return app
 
@@ -298,6 +407,30 @@ def _records_to_csv(records: List[Dict[str, str]]) -> str:
         row = {field: record.get(field, "") for field in fieldnames}
         writer.writerow(row)
     return buffer.getvalue()
+
+
+def _parse_metadata(value: Any) -> Dict[str, str]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="metadata must be an object with string values",
+        )
+    metadata: Dict[str, str] = {}
+    for key, item in value.items():
+        if not isinstance(key, str) or not key:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="metadata keys must be non-empty strings",
+            )
+        if not isinstance(item, str):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="metadata values must be strings",
+            )
+        metadata[key] = item
+    return metadata
 
 
 def _parse_rule(payload: Dict[str, Any]) -> RuleSchema:
