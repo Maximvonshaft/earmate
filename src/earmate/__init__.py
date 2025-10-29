@@ -1,6 +1,8 @@
 """EarMate core package."""
 
 from .engine import ExecutionResult, RuleExecutor
+from .rule_manager import RuleNotFoundError, RuleRecord, RuleRepository, RuleService
+from .scheduler import InMemoryScheduler, ScheduledRule, SchedulerEmpty
 from .schema import (
     Action,
     DeduplicationConfig,
@@ -27,4 +29,11 @@ __all__ = [
     "SchemaValidationError",
     "ScheduleConfig",
     "SelectorConfig",
+    "RuleRepository",
+    "RuleService",
+    "RuleRecord",
+    "RuleNotFoundError",
+    "InMemoryScheduler",
+    "ScheduledRule",
+    "SchedulerEmpty",
 ]

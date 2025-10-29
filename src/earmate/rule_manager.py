@@ -1,0 +1,116 @@
+"""In-memory rule repository and service helpers for the scraping engine."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Dict, Iterable, List, Optional
+from uuid import uuid4
+
+from .engine import ExecutionResult, HtmlFetcher, RuleExecutor
+from .schema import RuleSchema
+
+
+@dataclass
+class RuleRecord:
+    """Metadata wrapper around a :class:`RuleSchema`."""
+
+    id: str
+    rule: RuleSchema
+    created_at: datetime
+    updated_at: datetime
+    enabled: bool = True
+
+
+class RuleNotFoundError(KeyError):
+    """Raised when a rule identifier cannot be found in the repository."""
+
+
+class RuleRepository:
+    """Stores :class:`RuleRecord` instances in memory."""
+
+    def __init__(self) -> None:
+        self._records: Dict[str, RuleRecord] = {}
+
+    def create(self, rule: RuleSchema) -> RuleRecord:
+        now = datetime.now(tz=timezone.utc)
+        record = RuleRecord(id=uuid4().hex, rule=rule, created_at=now, updated_at=now)
+        self._records[record.id] = record
+        return record
+
+    def update(self, rule_id: str, rule: RuleSchema) -> RuleRecord:
+        if rule_id not in self._records:
+            raise RuleNotFoundError(rule_id)
+        existing = self._records[rule_id]
+        updated = RuleRecord(
+            id=existing.id,
+            rule=rule,
+            created_at=existing.created_at,
+            updated_at=datetime.now(tz=timezone.utc),
+            enabled=existing.enabled,
+        )
+        self._records[rule_id] = updated
+        return updated
+
+    def get(self, rule_id: str) -> RuleRecord:
+        try:
+            return self._records[rule_id]
+        except KeyError as exc:
+            raise RuleNotFoundError(rule_id) from exc
+
+    def delete(self, rule_id: str) -> None:
+        if rule_id not in self._records:
+            raise RuleNotFoundError(rule_id)
+        del self._records[rule_id]
+
+    def list(self) -> Iterable[RuleRecord]:
+        return sorted(self._records.values(), key=lambda record: record.created_at)
+
+    def set_enabled(self, rule_id: str, enabled: bool) -> RuleRecord:
+        record = self.get(rule_id)
+        updated = RuleRecord(
+            id=record.id,
+            rule=record.rule,
+            created_at=record.created_at,
+            updated_at=datetime.now(tz=timezone.utc),
+            enabled=enabled,
+        )
+        self._records[rule_id] = updated
+        return updated
+
+
+class RuleService:
+    """High-level CRUD facade combining repository access with the executor."""
+
+    def __init__(self, repository: RuleRepository, fetcher: Optional[HtmlFetcher] = None) -> None:
+        self.repository = repository
+        self.fetcher = fetcher
+
+    def create_rule(self, rule: RuleSchema) -> RuleRecord:
+        return self.repository.create(rule)
+
+    def list_rules(self) -> List[RuleRecord]:
+        return list(self.repository.list())
+
+    def get_rule(self, rule_id: str) -> RuleRecord:
+        return self.repository.get(rule_id)
+
+    def update_rule(self, rule_id: str, rule: RuleSchema) -> RuleRecord:
+        return self.repository.update(rule_id, rule)
+
+    def delete_rule(self, rule_id: str) -> None:
+        self.repository.delete(rule_id)
+
+    def set_enabled(self, rule_id: str, enabled: bool) -> RuleRecord:
+        return self.repository.set_enabled(rule_id, enabled)
+
+    def run_rule(self, rule_id: str) -> ExecutionResult:
+        record = self.repository.get(rule_id)
+        if not record.enabled:
+            raise RuleNotFoundError(f"rule {rule_id} is disabled")
+        executor = RuleExecutor(record.rule, fetcher=self.fetcher)
+        return executor.run()
+
+    def test_run(self, rule: RuleSchema) -> ExecutionResult:
+        executor = RuleExecutor(rule, fetcher=self.fetcher)
+        return executor.run()

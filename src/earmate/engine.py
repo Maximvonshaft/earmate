@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Callable, Dict, List
+from urllib.parse import urljoin
 from urllib.request import urlopen
 from xml.etree import ElementTree as ET
 
@@ -131,23 +132,54 @@ class RuleExecutor:
         self.fetcher = fetcher or default_fetcher
 
     def run(self) -> ExecutionResult:
-        list_html = self.fetcher(self.rule.entry)
-        list_doc = HtmlDocument(list_html)
-        list_items = list_doc.select(self.rule.selectors.list)
+        current_url = self.rule.entry
+        page_index = 1
 
         records: List[Dict[str, str]] = []
         detail_records: List[Dict[str, str]] = []
 
-        for item in list_items:
-            record = self._extract_fields(item)
-            records.append(record)
+        while True:
+            list_html = self.fetcher(current_url)
+            list_doc = HtmlDocument(list_html)
+            list_doc = self._apply_actions(list_doc, current_url)
+            list_items = list_doc.select(self.rule.selectors.list)
 
-            if self.rule.detail and self.rule.detail.enabled:
-                detail_record = self._extract_detail(item, self.rule.detail)
-                if detail_record:
-                    detail_records.append(detail_record)
+            for item in list_items:
+                record = self._extract_fields(item)
+                records.append(record)
 
-        metadata = {"item_count": str(len(records))}
+                if self.rule.detail and self.rule.detail.enabled:
+                    detail_record = self._extract_detail(item, self.rule.detail, current_url)
+                    if detail_record:
+                        detail_records.append(detail_record)
+
+            if not self._should_continue_pagination(page_index, list_doc, current_url):
+                break
+
+            page_index += 1
+            pagination_config = self.rule.pagination
+            if pagination_config is None:
+                break
+
+            if pagination_config.type == "url":
+                template = pagination_config.selector or ""
+                next_url = _resolve_pagination_url(template, page_index, current_url)
+                if not next_url:
+                    break
+                current_url = next_url
+            else:
+                next_anchor = list_doc.select_one(pagination_config.selector or "")
+                if next_anchor is None:
+                    break
+                href = _extract_href(next_anchor)
+                if not href:
+                    break
+                current_url = urljoin(current_url, href)
+
+        metadata = {
+            "item_count": str(len(records)),
+            "pages": str(page_index),
+        }
         if self.rule.detail and self.rule.detail.enabled:
             metadata["detail_count"] = str(len(detail_records))
 
@@ -180,7 +212,12 @@ class RuleExecutor:
 
         return record
 
-    def _extract_detail(self, item: ET.Element, detail_rule: DetailRule) -> Dict[str, str]:
+    def _extract_detail(
+        self,
+        item: ET.Element,
+        detail_rule: DetailRule,
+        base_url: str,
+    ) -> Dict[str, str]:
         if not detail_rule.selector:
             return {}
         anchor = _select_single(item, detail_rule.selector)
@@ -191,7 +228,8 @@ class RuleExecutor:
         if not href:
             return {}
 
-        detail_html = self.fetcher(href)
+        detail_url = urljoin(base_url, href)
+        detail_html = self.fetcher(detail_url)
         detail_doc = HtmlDocument(detail_html)
 
         detail_record: Dict[str, str] = {}
@@ -199,6 +237,54 @@ class RuleExecutor:
             element = detail_doc.select_one(field.selector)
             detail_record[field.name] = _text_content(element) if element is not None else ""
         return detail_record
+
+    def _apply_actions(self, doc: HtmlDocument, current_url: str) -> HtmlDocument:
+        for action in self.rule.actions:
+            if action.type == "click":
+                if not action.selector:
+                    continue
+                element = doc.select_one(action.selector)
+                if element is None:
+                    continue
+                href = _extract_href(element)
+                if not href:
+                    continue
+                target_url = urljoin(current_url, href)
+                html = self.fetcher(target_url)
+                doc = HtmlDocument(html)
+                current_url = target_url
+            elif action.type == "wait":
+                # wait is a no-op in the simplified engine but kept for schema compatibility
+                continue
+            elif action.type == "extract":
+                # extraction actions are handled by the core loop; nothing to do here
+                continue
+        return doc
+
+    def _should_continue_pagination(
+        self,
+        page_index: int,
+        doc: HtmlDocument,
+        current_url: str,
+    ) -> bool:
+        pagination_config = self.rule.pagination
+        if not pagination_config:
+            return False
+        if page_index >= pagination_config.max_pages:
+            return False
+
+        if pagination_config.type == "url":
+            template = pagination_config.selector or ""
+            next_url = _resolve_pagination_url(template, page_index + 1, current_url)
+            return bool(next_url)
+
+        if not pagination_config.selector:
+            return False
+        next_anchor = doc.select_one(pagination_config.selector)
+        if next_anchor is None:
+            return False
+        href = _extract_href(next_anchor)
+        return bool(href)
 
 
 def _select_single(root: ET.Element, selector: str) -> ET.Element | None:
@@ -216,3 +302,19 @@ def _extract_href(element: ET.Element | None) -> str:
     if element is None:
         return ""
     return element.attrib.get("href", "")
+
+
+def _resolve_pagination_url(template: str, page_index: int, base_url: str) -> str:
+    if not template:
+        return ""
+    if "{page}" in template:
+        try:
+            candidate = template.format(page=page_index)
+        except KeyError:
+            return ""
+        if candidate.startswith("http://") or candidate.startswith("https://"):
+            return candidate
+        return urljoin(base_url, candidate)
+    if template.startswith("http://") or template.startswith("https://"):
+        return template
+    return urljoin(base_url, template)
