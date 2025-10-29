@@ -213,6 +213,7 @@ def test_dashboard_page_returns_html() -> None:
     assert response.status_code == 200
     body = response.text
     assert "EarMate 监控仪表板" in body
+    assert "录制会话工作台" in body
     assert "monitoring/dashboard" in body
 
 
