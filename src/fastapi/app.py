@@ -1,11 +1,33 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
-from inspect import signature
+from inspect import iscoroutine, signature
 from typing import Any, Callable, Dict, List, Optional
 
 from .exceptions import HTTPException
 from .responses import Response
+
+
+@dataclass
+class HeaderInfo:
+    """Descriptor for header parameters declared via :func:`Header`."""
+
+    default: Any = None
+    alias: Optional[str] = None
+
+
+class Depends:
+    """Wrapper storing dependency callables."""
+
+    def __init__(self, dependency: Callable[..., Any]):
+        self.dependency = dependency
+
+
+def Header(default: Any = None, *, alias: Optional[str] = None) -> HeaderInfo:
+    """Declare an HTTP header dependency."""
+
+    return HeaderInfo(default=default, alias=alias)
 
 
 class _AppState:
@@ -23,6 +45,7 @@ class _Route:
     method: str
     endpoint: Callable[..., Any]
     status_code: int
+    dependencies: List[Any]
 
     def match(self, method: str, path: str) -> Optional[Dict[str, str]]:
         if self.method != method.upper():
@@ -50,19 +73,51 @@ class FastAPI:
         self.state = _AppState()
         self._routes: List[_Route] = []
 
-    def get(self, path: str, *, status_code: int = 200) -> RouteDecorator:
-        return self._add_route("GET", path, status_code)
+    def get(
+        self,
+        path: str,
+        *,
+        status_code: int = 200,
+        dependencies: Optional[List[Any]] = None,
+    ) -> RouteDecorator:
+        return self._add_route("GET", path, status_code, dependencies)
 
-    def post(self, path: str, *, status_code: int = 200) -> RouteDecorator:
-        return self._add_route("POST", path, status_code)
+    def post(
+        self,
+        path: str,
+        *,
+        status_code: int = 200,
+        dependencies: Optional[List[Any]] = None,
+    ) -> RouteDecorator:
+        return self._add_route("POST", path, status_code, dependencies)
 
-    def put(self, path: str, *, status_code: int = 200) -> RouteDecorator:
-        return self._add_route("PUT", path, status_code)
+    def put(
+        self,
+        path: str,
+        *,
+        status_code: int = 200,
+        dependencies: Optional[List[Any]] = None,
+    ) -> RouteDecorator:
+        return self._add_route("PUT", path, status_code, dependencies)
 
-    def delete(self, path: str, *, status_code: int = 200) -> RouteDecorator:
-        return self._add_route("DELETE", path, status_code)
+    def delete(
+        self,
+        path: str,
+        *,
+        status_code: int = 200,
+        dependencies: Optional[List[Any]] = None,
+    ) -> RouteDecorator:
+        return self._add_route("DELETE", path, status_code, dependencies)
 
-    def _add_route(self, method: str, path: str, status_code: int) -> RouteDecorator:
+    def _add_route(
+        self,
+        method: str,
+        path: str,
+        status_code: int,
+        dependencies: Optional[List[Any]] = None,
+    ) -> RouteDecorator:
+        dependency_list = list(dependencies or [])
+
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             self._routes.append(
                 _Route(
@@ -70,6 +125,7 @@ class FastAPI:
                     method=method.upper(),
                     endpoint=func,
                     status_code=status_code,
+                    dependencies=list(dependency_list),
                 )
             )
             return func
@@ -77,13 +133,19 @@ class FastAPI:
         return decorator
 
     def handle_request(
-        self, method: str, path: str, body: Optional[Dict[str, Any]] = None
+        self,
+        method: str,
+        path: str,
+        body: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
     ) -> Response:
+        header_map = {key.lower(): value for key, value in (headers or {}).items()}
         for route in self._routes:
             params = route.match(method, path)
             if params is None:
                 continue
             try:
+                self._evaluate_dependencies(route.dependencies, header_map)
                 kwargs = self._build_kwargs(route.endpoint, params, body)
                 result = route.endpoint(**kwargs)
             except HTTPException as exc:
@@ -108,3 +170,27 @@ class FastAPI:
             if param.default is param.empty:
                 raise TypeError(f"missing required parameter: {name}")
         return kwargs
+
+    @staticmethod
+    def _evaluate_dependencies(dependencies: List[Any], headers: Dict[str, str]) -> None:
+        for dependency in dependencies:
+            func = dependency.dependency if isinstance(dependency, Depends) else dependency
+            FastAPI._call_dependency(func, headers)
+
+    @staticmethod
+    def _call_dependency(func: Callable[..., Any], headers: Dict[str, str]) -> None:
+        kwargs: Dict[str, Any] = {}
+        sig = signature(func)
+        for name, param in sig.parameters.items():
+            default = param.default
+            if isinstance(default, HeaderInfo):
+                header_name = (default.alias or name).lower()
+                value = headers.get(header_name, default.default)
+                kwargs[name] = value
+            elif default is param.empty:
+                kwargs[name] = None
+            else:
+                kwargs[name] = default
+        result = func(**kwargs)
+        if iscoroutine(result):
+            asyncio.run(result)
