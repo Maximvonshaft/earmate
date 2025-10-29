@@ -3,6 +3,7 @@ from __future__ import annotations
 from earmate.api import create_app
 from earmate.rule_manager import RuleRepository, RuleService
 from earmate.scheduler import InMemoryScheduler
+from earmate.storage import ResultRepository
 from fastapi.testclient import TestClient
 
 HTML_FIXTURE = """
@@ -35,9 +36,15 @@ def build_client() -> TestClient:
         return HTML_FIXTURE
 
     repository = RuleRepository()
-    service = RuleService(repository, fetcher=fake_fetcher)
+    results = ResultRepository()
+    service = RuleService(repository, fetcher=fake_fetcher, result_repository=results)
     scheduler = InMemoryScheduler()
-    app = create_app(service=service, repository=repository, scheduler=scheduler)
+    app = create_app(
+        service=service,
+        repository=repository,
+        scheduler=scheduler,
+        result_repository=results,
+    )
     return TestClient(app)
 
 
@@ -76,6 +83,50 @@ def test_update_and_run_rule() -> None:
     assert run_response.status_code == 200
     run_data = run_response.json()
     assert run_data["records"][0]["title"] == "Item A"
+
+
+def test_results_are_persisted_and_retrievable() -> None:
+    client = build_client()
+    rule_id = client.post("/rules", json=RULE_PAYLOAD).json()["id"]
+
+    run_response = client.post(f"/rules/{rule_id}/run")
+    assert run_response.status_code == 200
+
+    list_response = client.get("/results")
+    assert list_response.status_code == 200
+    payload = list_response.json()
+    assert payload["count"] == 1
+    execution_id = payload["items"][0]["id"]
+    assert payload["items"][0]["item_count"] == 1
+
+    detail_response = client.get(f"/results/{execution_id}")
+    assert detail_response.status_code == 200
+    detail_payload = detail_response.json()
+    assert detail_payload["result"]["records"][0]["title"] == "Item A"
+
+    export_response = client.get(f"/results/{execution_id}/export/csv")
+    assert export_response.status_code == 200
+    assert "Item A" in export_response.text
+
+    filter_response = client.get(f"/rules/{rule_id}/results")
+    assert filter_response.status_code == 200
+    assert filter_response.json()["count"] == 1
+
+    unsupported = client.get(f"/results/{execution_id}/export/xml")
+    assert unsupported.status_code == 400
+
+
+def test_deleting_rule_clears_results() -> None:
+    client = build_client()
+    rule_id = client.post("/rules", json=RULE_PAYLOAD).json()["id"]
+    client.post(f"/rules/{rule_id}/run")
+
+    delete_response = client.delete(f"/rules/{rule_id}")
+    assert delete_response.status_code == 204
+
+    list_response = client.get("/results")
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 0
 
 
 def test_test_run_returns_execution_result() -> None:

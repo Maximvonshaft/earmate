@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from .engine import ExecutionResult, HtmlFetcher, RuleExecutor
 from .schema import RuleSchema
+from .storage import ExecutionNotFoundError, ExecutionRecord, ResultRepository
 
 
 @dataclass
@@ -82,9 +83,15 @@ class RuleRepository:
 class RuleService:
     """High-level CRUD facade combining repository access with the executor."""
 
-    def __init__(self, repository: RuleRepository, fetcher: Optional[HtmlFetcher] = None) -> None:
+    def __init__(
+        self,
+        repository: RuleRepository,
+        fetcher: Optional[HtmlFetcher] = None,
+        result_repository: Optional[ResultRepository] = None,
+    ) -> None:
         self.repository = repository
         self.fetcher = fetcher
+        self.result_repository = result_repository
 
     def create_rule(self, rule: RuleSchema) -> RuleRecord:
         return self.repository.create(rule)
@@ -100,6 +107,8 @@ class RuleService:
 
     def delete_rule(self, rule_id: str) -> None:
         self.repository.delete(rule_id)
+        if self.result_repository:
+            self.result_repository.remove_for_rule(rule_id)
 
     def set_enabled(self, rule_id: str, enabled: bool) -> RuleRecord:
         return self.repository.set_enabled(rule_id, enabled)
@@ -109,8 +118,21 @@ class RuleService:
         if not record.enabled:
             raise RuleNotFoundError(f"rule {rule_id} is disabled")
         executor = RuleExecutor(record.rule, fetcher=self.fetcher)
-        return executor.run()
+        result = executor.run()
+        if self.result_repository:
+            self.result_repository.add(rule_id, result)
+        return result
 
     def test_run(self, rule: RuleSchema) -> ExecutionResult:
         executor = RuleExecutor(rule, fetcher=self.fetcher)
         return executor.run()
+
+    def list_executions(self, rule_id: Optional[str] = None) -> List[ExecutionRecord]:
+        if not self.result_repository:
+            return []
+        return list(self.result_repository.list(rule_id))
+
+    def get_execution(self, execution_id: str) -> ExecutionRecord:
+        if not self.result_repository:
+            raise ExecutionNotFoundError(execution_id)
+        return self.result_repository.get(execution_id)

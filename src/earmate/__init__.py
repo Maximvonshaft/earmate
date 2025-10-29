@@ -16,6 +16,7 @@ from .schema import (
     SchemaValidationError,
     SelectorConfig,
 )
+from .storage import ExecutionNotFoundError, ExecutionRecord, ResultRepository
 
 __all__ = [
     "ExecutionResult",
@@ -38,4 +39,7 @@ __all__ = [
     "InMemoryScheduler",
     "ScheduledRule",
     "SchedulerEmpty",
+    "ResultRepository",
+    "ExecutionRecord",
+    "ExecutionNotFoundError",
 ]
