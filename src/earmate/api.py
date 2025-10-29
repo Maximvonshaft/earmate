@@ -15,6 +15,7 @@ from .contracts import (
     RecorderSessionContract,
     RuleContract,
 )
+from .dashboard import render_dashboard_page
 from .monitoring import MonitoringRepository, MonitoringService, TaskRunNotFoundError
 from .recorder import (
     InvalidRecorderEvent,
@@ -85,6 +86,10 @@ def create_app(
     app.state.api_keys = allowed_api_keys
 
     _sync_scheduler(app)
+
+    @app.get("/dashboard")
+    def dashboard_page() -> str:
+        return render_dashboard_page()
 
     @app.get("/contracts/rule")
     def rule_contract_schema() -> Dict[str, Any]:
