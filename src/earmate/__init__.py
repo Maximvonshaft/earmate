@@ -1,5 +1,6 @@
 """EarMate core package."""
 
+from .api import create_app
 from .engine import ExecutionResult, RuleExecutor
 from .rule_manager import RuleNotFoundError, RuleRecord, RuleRepository, RuleService
 from .scheduler import InMemoryScheduler, ScheduledRule, SchedulerEmpty
@@ -19,6 +20,7 @@ from .schema import (
 __all__ = [
     "ExecutionResult",
     "RuleExecutor",
+    "create_app",
     "Action",
     "DeduplicationConfig",
     "DetailField",
