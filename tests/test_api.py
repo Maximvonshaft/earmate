@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from earmate.api import create_app
+from earmate.monitoring import MonitoringRepository, MonitoringService
 from earmate.rule_manager import RuleRepository, RuleService
 from earmate.scheduler import InMemoryScheduler
 from earmate.storage import ResultRepository
@@ -37,13 +38,20 @@ def build_client() -> TestClient:
 
     repository = RuleRepository()
     results = ResultRepository()
-    service = RuleService(repository, fetcher=fake_fetcher, result_repository=results)
+    monitoring = MonitoringService(MonitoringRepository())
+    service = RuleService(
+        repository,
+        fetcher=fake_fetcher,
+        result_repository=results,
+        monitoring=monitoring,
+    )
     scheduler = InMemoryScheduler()
     app = create_app(
         service=service,
         repository=repository,
         scheduler=scheduler,
         result_repository=results,
+        monitoring=monitoring,
     )
     return TestClient(app)
 
@@ -164,6 +172,35 @@ def test_disable_rule_removes_from_scheduler() -> None:
     trigger_response = client.post("/scheduler/trigger")
     assert trigger_response.status_code == 200
     assert trigger_response.json()["count"] == 0
+
+
+def test_monitoring_endpoints_expose_run_state() -> None:
+    client = build_client()
+    rule_id = client.post("/rules", json=RULE_PAYLOAD).json()["id"]
+
+    run_response = client.post(f"/rules/{rule_id}/run")
+    assert run_response.status_code == 200
+    run_payload = run_response.json()
+    metadata = run_payload["metadata"]
+    run_id = metadata["run_id"]
+
+    list_response = client.get("/monitoring/runs")
+    assert list_response.status_code == 200
+    list_payload = list_response.json()
+    assert list_payload["count"] == 1
+    assert list_payload["items"][0]["id"] == run_id
+
+    detail_response = client.get(f"/monitoring/runs/{run_id}")
+    assert detail_response.status_code == 200
+    detail_payload = detail_response.json()
+    assert detail_payload["status"] == "succeeded"
+    assert detail_payload["metrics"]["items"] == 1.0
+
+    summary_response = client.get("/monitoring/summary")
+    assert summary_response.status_code == 200
+    summary_payload = summary_response.json()
+    assert summary_payload["total"] == 1
+    assert summary_payload["by_status"]["succeeded"] == 1
 
 
 def test_contract_schemas_are_exposed() -> None:

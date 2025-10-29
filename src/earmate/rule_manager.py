@@ -8,6 +8,7 @@ from typing import Dict, Iterable, List, Optional
 from uuid import uuid4
 
 from .engine import ExecutionResult, HtmlFetcher, RuleExecutor
+from .monitoring import MonitoringService, TaskStatus
 from .schema import RuleSchema
 from .storage import ExecutionNotFoundError, ExecutionRecord, ResultRepository
 
@@ -88,10 +89,12 @@ class RuleService:
         repository: RuleRepository,
         fetcher: Optional[HtmlFetcher] = None,
         result_repository: Optional[ResultRepository] = None,
+        monitoring: Optional[MonitoringService] = None,
     ) -> None:
         self.repository = repository
         self.fetcher = fetcher
         self.result_repository = result_repository
+        self.monitoring = monitoring
 
     def create_rule(self, rule: RuleSchema) -> RuleRecord:
         return self.repository.create(rule)
@@ -117,10 +120,42 @@ class RuleService:
         record = self.repository.get(rule_id)
         if not record.enabled:
             raise RuleNotFoundError(f"rule {rule_id} is disabled")
+        monitoring_run = None
+        if self.monitoring is not None:
+            monitoring_run = self.monitoring.create_run(rule_id)
+            self.monitoring.append_log(monitoring_run.id, "info", "queued execution")
+            self.monitoring.mark_running(monitoring_run.id)
+            self.monitoring.append_log(monitoring_run.id, "info", "execution started")
+
         executor = RuleExecutor(record.rule, fetcher=self.fetcher)
-        result = executor.run()
+        try:
+            result = executor.run()
+        except Exception as exc:
+            if monitoring_run is not None:
+                self.monitoring.append_log(monitoring_run.id, "error", str(exc))
+                self.monitoring.mark_failure(monitoring_run.id, str(exc))
+            raise
+
+        execution_id = None
         if self.result_repository:
-            self.result_repository.add(rule_id, result)
+            execution_record = self.result_repository.add(rule_id, result)
+            execution_id = execution_record.id
+
+        if monitoring_run is not None:
+            metrics = {
+                "items": float(len(result.records)),
+                "detail_items": float(len(result.detail_records)),
+            }
+            if execution_id:
+                self.monitoring.attach_execution(monitoring_run.id, execution_id)
+            self.monitoring.append_log(monitoring_run.id, "info", "execution finished")
+            self.monitoring.mark_success(monitoring_run.id, metrics)
+            result.metadata.setdefault("run_id", monitoring_run.id)
+
+        if execution_id and "execution_id" not in result.metadata:
+            result.metadata["execution_id"] = execution_id
+
+        result.metadata.setdefault("status", TaskStatus.SUCCEEDED.value)
         return result
 
     def test_run(self, rule: RuleSchema) -> ExecutionResult:
