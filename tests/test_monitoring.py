@@ -101,6 +101,32 @@ def test_rule_service_failure_is_recorded(
     assert "boom" in (runs[0].error_message or "")
 
 
+def test_preview_rule_runs_when_disabled(
+    simple_rule: RuleSchema,
+    fetcher,
+    monitoring_service: MonitoringService,
+) -> None:
+    repository = RuleRepository()
+    results = ResultRepository()
+    service = RuleService(
+        repository,
+        fetcher=fetcher,
+        result_repository=results,
+        monitoring=monitoring_service,
+    )
+    created = service.create_rule(simple_rule)
+    service.set_enabled(created.id, False)
+
+    result = service.preview_rule(created.id)
+
+    assert result.metadata["status"] == TaskStatus.SUCCEEDED.value
+    assert result.metadata["run_id"]
+    runs = list(monitoring_service.list_runs(created.id))
+    assert runs and runs[0].rule_id == created.id
+    executions = list(service.list_executions(created.id))
+    assert executions and executions[0].id == result.metadata["execution_id"]
+
+
 def test_dashboard_aggregates_runs(monitoring_service: MonitoringService) -> None:
     repository = monitoring_service.repository
     run_success = repository.create_run("rule-a")

@@ -120,43 +120,11 @@ class RuleService:
         record = self.repository.get(rule_id)
         if not record.enabled:
             raise RuleNotFoundError(f"rule {rule_id} is disabled")
-        monitoring_run = None
-        if self.monitoring is not None:
-            monitoring_run = self.monitoring.create_run(rule_id)
-            self.monitoring.append_log(monitoring_run.id, "info", "queued execution")
-            self.monitoring.mark_running(monitoring_run.id)
-            self.monitoring.append_log(monitoring_run.id, "info", "execution started")
+        return self._execute_record(record, allow_disabled=False, reason="execution")
 
-        executor = RuleExecutor(record.rule, fetcher=self.fetcher)
-        try:
-            result = executor.run()
-        except Exception as exc:
-            if monitoring_run is not None:
-                self.monitoring.append_log(monitoring_run.id, "error", str(exc))
-                self.monitoring.mark_failure(monitoring_run.id, str(exc))
-            raise
-
-        execution_id = None
-        if self.result_repository:
-            execution_record = self.result_repository.add(rule_id, result)
-            execution_id = execution_record.id
-
-        if monitoring_run is not None:
-            metrics = {
-                "items": float(len(result.records)),
-                "detail_items": float(len(result.detail_records)),
-            }
-            if execution_id:
-                self.monitoring.attach_execution(monitoring_run.id, execution_id)
-            self.monitoring.append_log(monitoring_run.id, "info", "execution finished")
-            self.monitoring.mark_success(monitoring_run.id, metrics)
-            result.metadata.setdefault("run_id", monitoring_run.id)
-
-        if execution_id and "execution_id" not in result.metadata:
-            result.metadata["execution_id"] = execution_id
-
-        result.metadata.setdefault("status", TaskStatus.SUCCEEDED.value)
-        return result
+    def preview_rule(self, rule_id: str) -> ExecutionResult:
+        record = self.repository.get(rule_id)
+        return self._execute_record(record, allow_disabled=True, reason="preview")
 
     def test_run(self, rule: RuleSchema) -> ExecutionResult:
         executor = RuleExecutor(rule, fetcher=self.fetcher)
@@ -171,3 +139,54 @@ class RuleService:
         if not self.result_repository:
             raise ExecutionNotFoundError(execution_id)
         return self.result_repository.get(execution_id)
+
+    def _execute_record(
+        self,
+        record: RuleRecord,
+        *,
+        allow_disabled: bool,
+        reason: str,
+    ) -> ExecutionResult:
+        if not record.enabled and not allow_disabled:
+            raise RuleNotFoundError(f"rule {record.id} is disabled")
+
+        monitoring_run = None
+        if self.monitoring is not None:
+            monitoring_run = self.monitoring.create_run(record.id)
+            label = "试跑" if reason == "preview" else "执行"
+            self.monitoring.append_log(monitoring_run.id, "info", f"{label}任务已入队")
+            self.monitoring.mark_running(monitoring_run.id)
+            self.monitoring.append_log(monitoring_run.id, "info", f"{label}开始执行")
+
+        executor = RuleExecutor(record.rule, fetcher=self.fetcher)
+        try:
+            result = executor.run()
+        except Exception as exc:
+            if monitoring_run is not None:
+                self.monitoring.append_log(monitoring_run.id, "error", str(exc))
+                self.monitoring.mark_failure(monitoring_run.id, str(exc))
+            raise
+
+        execution_id = None
+        if self.result_repository:
+            execution_record = self.result_repository.add(record.id, result)
+            execution_id = execution_record.id
+
+        if monitoring_run is not None:
+            metrics = {
+                "items": float(len(result.records)),
+                "detail_items": float(len(result.detail_records)),
+            }
+            if execution_id:
+                self.monitoring.attach_execution(monitoring_run.id, execution_id)
+            action = "试跑" if reason == "preview" else "执行"
+            self.monitoring.append_log(monitoring_run.id, "info", f"{action}完成")
+            self.monitoring.mark_success(monitoring_run.id, metrics)
+            result.metadata.setdefault("run_id", monitoring_run.id)
+
+        if execution_id and "execution_id" not in result.metadata:
+            result.metadata["execution_id"] = execution_id
+
+        result.metadata.setdefault("status", TaskStatus.SUCCEEDED.value)
+        result.metadata.setdefault("rule_id", record.id)
+        return result

@@ -16,7 +16,12 @@ from .contracts import (
     RuleContract,
 )
 from .dashboard import render_dashboard_page
-from .monitoring import MonitoringRepository, MonitoringService, TaskRunNotFoundError
+from .monitoring import (
+    MonitoringRepository,
+    MonitoringService,
+    TaskRunNotFoundError,
+    TaskStatus,
+)
 from .recorder import (
     InvalidRecorderEvent,
     RecorderRepository,
@@ -269,7 +274,7 @@ def create_app(
 
         if test_run_value:
             try:
-                result = app.state.service.test_run(rule)
+                result = app.state.service.preview_rule(record.id)
             except Exception as exc:  # pragma: no cover - depends on engine runtime
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -390,7 +395,32 @@ def create_app(
     @app.post("/rules/test-run", dependencies=protected)
     def test_run(payload: Dict[str, Any]) -> Dict[str, Any]:
         rule = _parse_rule(payload)
-        result = app.state.service.test_run(rule)
+        monitoring: Optional[MonitoringService] = getattr(app.state, "monitoring", None)
+        run = None
+        if monitoring is not None:
+            preview_rule_id = _preview_rule_id(rule)
+            run = monitoring.create_run(preview_rule_id)
+            monitoring.append_log(run.id, "info", "试跑任务已入队")
+            monitoring.mark_running(run.id)
+            monitoring.append_log(run.id, "info", "试跑开始执行")
+        try:
+            result = app.state.service.test_run(rule)
+        except Exception as exc:  # pragma: no cover - depends on engine runtime
+            if run is not None:
+                monitoring.append_log(run.id, "error", str(exc))
+                monitoring.mark_failure(run.id, str(exc))
+            raise
+
+        if run is not None:
+            metrics = {
+                "items": float(len(result.records)),
+                "detail_items": float(len(result.detail_records)),
+            }
+            monitoring.append_log(run.id, "info", "试跑完成")
+            monitoring.mark_success(run.id, metrics)
+            result.metadata.setdefault("run_id", run.id)
+            result.metadata.setdefault("rule_id", run.rule_id)
+            result.metadata.setdefault("status", TaskStatus.SUCCEEDED.value)
         return _execution_result_to_dict(result)
 
     @app.post("/scheduler/trigger", dependencies=protected)
@@ -499,6 +529,17 @@ def _execution_detail(record: ExecutionRecord) -> Dict[str, Any]:
     payload = _execution_summary(record)
     payload["result"] = _execution_result_to_dict(record.result)
     return payload
+
+
+def _preview_rule_id(rule: RuleSchema) -> str:
+    metadata = getattr(rule, "metadata", {}) or {}
+    session_id = metadata.get("recorder_session") if isinstance(metadata, dict) else None
+    if isinstance(session_id, str) and session_id:
+        return f"preview:{session_id}"
+    name = getattr(rule, "name", None)
+    if isinstance(name, str) and name:
+        return f"preview:{name}"
+    return "preview:adhoc"
 
 
 def _records_to_csv(records: List[Dict[str, str]]) -> str:

@@ -452,11 +452,33 @@ def rule_to_contract(rule: RuleSchema) -> Dict[str, Any]:
 
 
 def execution_result_to_contract(result: ExecutionResult) -> Dict[str, Any]:
-    return {
+    metadata = dict(result.metadata)
+    payload: Dict[str, Any] = {
         "records": [dict(item) for item in result.records],
         "detail_records": [dict(item) for item in result.detail_records],
-        "metadata": dict(result.metadata),
+        "metadata": metadata,
     }
+    monitoring_info = _monitoring_to_payload(metadata)
+    if monitoring_info is not None:
+        payload["monitoring"] = monitoring_info
+    return payload
+
+
+def _monitoring_to_payload(metadata: Dict[str, Any]) -> Optional[Dict[str, str]]:
+    run_id = metadata.get("run_id")
+    if not isinstance(run_id, str) or not run_id:
+        return None
+    payload: Dict[str, str] = {
+        "run_id": run_id,
+        "url": f"/monitoring/runs/{run_id}",
+    }
+    execution_id = metadata.get("execution_id")
+    if isinstance(execution_id, str) and execution_id:
+        payload["execution_id"] = execution_id
+    rule_id = metadata.get("rule_id")
+    if isinstance(rule_id, str) and rule_id:
+        payload["rule_id"] = rule_id
+    return payload
 
 
 RULE_CONTRACT_SCHEMA: Dict[str, Any] = {
@@ -587,6 +609,17 @@ EXECUTION_RESULT_SCHEMA: Dict[str, Any] = {
         "metadata": {
             "type": "object",
             "additionalProperties": {"type": "string"},
+        },
+        "monitoring": {
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "string"},
+                "url": {"type": "string"},
+                "execution_id": {"type": "string"},
+                "rule_id": {"type": "string"},
+            },
+            "required": ["run_id", "url"],
+            "additionalProperties": False,
         },
     },
     "required": ["records", "detail_records", "metadata"],
