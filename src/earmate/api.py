@@ -2,26 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from datetime import datetime
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException, Response, status
 
+from .contracts import ContractValidationError, ExecutionResultContract, RuleContract
 from .rule_manager import RuleNotFoundError, RuleRepository, RuleService
 from .scheduler import InMemoryScheduler
-from .schema import (
-    Action,
-    DeduplicationConfig,
-    DetailField,
-    DetailRule,
-    OutputConfig,
-    PaginationConfig,
-    RuleSchema,
-    ScheduleConfig,
-    SchemaValidationError,
-    SelectorConfig,
-)
+from .schema import RuleSchema
 
 
 def create_app(
@@ -42,6 +31,14 @@ def create_app(
     app.state.scheduler = sched
 
     _sync_scheduler(app)
+
+    @app.get("/contracts/rule")
+    def rule_contract_schema() -> Dict[str, Any]:
+        return {"json_schema": RuleContract.json_schema()}
+
+    @app.get("/contracts/test-run")
+    def execution_result_schema() -> Dict[str, Any]:
+        return {"json_schema": ExecutionResultContract.json_schema()}
 
     @app.get("/rules")
     def list_rules() -> Dict[str, Any]:
@@ -146,110 +143,31 @@ def _sync_scheduler(app: FastAPI) -> None:
 
 
 def _record_to_dict(record: Any) -> Dict[str, Any]:
+    contract = RuleContract(rule=record.rule)
     data = {
         "id": record.id,
         "enabled": record.enabled,
         "created_at": _isoformat(record.created_at),
         "updated_at": _isoformat(record.updated_at),
-        "rule": _rule_to_dict(record.rule),
+        "rule": contract.to_payload(),
     }
     return data
 
 
-def _rule_to_dict(rule: RuleSchema) -> Dict[str, Any]:
-    return asdict(rule)
-
-
 def _execution_result_to_dict(result: Any) -> Dict[str, Any]:
-    return {
-        "records": result.records,
-        "detail_records": result.detail_records,
-        "metadata": result.metadata,
-    }
+    contract = ExecutionResultContract.from_execution_result(result)
+    return contract.to_payload()
 
 
 def _parse_rule(payload: Dict[str, Any]) -> RuleSchema:
     try:
-        selectors = SelectorConfig(**payload["selectors"])
-    except KeyError as exc:
+        contract = RuleContract.from_payload(payload)
+    except ContractValidationError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="selectors field is required",
+            detail=exc.errors,
         ) from exc
-    pagination = _maybe_construct(PaginationConfig, payload.get("pagination"))
-    detail_payload = payload.get("detail")
-    detail = None
-    if detail_payload:
-        fields_payload = detail_payload.get("fields", [])
-        try:
-            fields = [DetailField(**item) for item in fields_payload]
-        except (TypeError, SchemaValidationError) as exc:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=str(exc),
-            ) from exc
-        try:
-            detail = DetailRule(
-                enabled=detail_payload.get("enabled", False),
-                selector=detail_payload.get("selector"),
-                fields=fields,
-            )
-        except SchemaValidationError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=str(exc),
-            ) from exc
-    actions_payload = payload.get("actions", [])
-    try:
-        actions = [Action(**item) for item in actions_payload]
-    except (TypeError, SchemaValidationError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
-        ) from exc
-    schedule = _maybe_construct(ScheduleConfig, payload.get("schedule"))
-    dedupe = _maybe_construct(DeduplicationConfig, payload.get("dedupe"))
-    output = _maybe_construct(OutputConfig, payload.get("output"))
-    try:
-        return RuleSchema(
-            name=payload["name"],
-            entry=payload["entry"],
-            selectors=selectors,
-            pagination=pagination,
-            detail=detail,
-            actions=actions,
-            schedule=schedule,
-            dedupe=dedupe,
-            output=output,
-            metadata=payload.get("metadata", {}),
-        )
-    except KeyError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"missing field: {exc.args[0]}",
-        ) from exc
-    except SchemaValidationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
-        ) from exc
-    except TypeError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
-        ) from exc
-
-
-def _maybe_construct(cls, payload: Optional[Dict[str, Any]]):
-    if not payload:
-        return None
-    try:
-        return cls(**payload)
-    except (SchemaValidationError, TypeError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
-        ) from exc
+    return contract.to_rule_schema()
 
 
 def _isoformat(value: datetime) -> str:
