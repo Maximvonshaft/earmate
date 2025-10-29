@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import csv
+import io
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Response, status
 
@@ -11,6 +13,7 @@ from .contracts import ContractValidationError, ExecutionResultContract, RuleCon
 from .rule_manager import RuleNotFoundError, RuleRepository, RuleService
 from .scheduler import InMemoryScheduler
 from .schema import RuleSchema
+from .storage import ExecutionNotFoundError, ExecutionRecord, ResultRepository
 
 
 def create_app(
@@ -18,17 +21,31 @@ def create_app(
     service: Optional[RuleService] = None,
     repository: Optional[RuleRepository] = None,
     scheduler: Optional[InMemoryScheduler] = None,
+    result_repository: Optional[ResultRepository] = None,
 ) -> FastAPI:
     """Construct a FastAPI application with in-memory services by default."""
 
-    repo = repository or RuleRepository()
-    svc = service or RuleService(repo)
+    if service is None:
+        repo = repository or RuleRepository()
+        results = result_repository or ResultRepository()
+        svc = RuleService(repo, result_repository=results)
+    else:
+        svc = service
+        repo = repository or svc.repository
+        if result_repository is not None:
+            results = result_repository
+            svc.result_repository = result_repository
+        else:
+            results = svc.result_repository or ResultRepository()
+            if svc.result_repository is None:
+                svc.result_repository = results
     sched = scheduler or InMemoryScheduler()
 
     app = FastAPI(title="EarMate API", version="0.1.0")
     app.state.repository = svc.repository
     app.state.service = svc
     app.state.scheduler = sched
+    app.state.results = results
 
     _sync_scheduler(app)
 
@@ -81,6 +98,42 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
         _sync_scheduler(app)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @app.get("/results")
+    def list_results(rule_id: Optional[str] = None) -> Dict[str, Any]:
+        records = app.state.service.list_executions(rule_id)
+        summaries = [_execution_summary(record) for record in records]
+        return {"items": summaries, "count": len(summaries)}
+
+    @app.get("/rules/{rule_id}/results")
+    def list_results_for_rule(rule_id: str) -> Dict[str, Any]:
+        records = app.state.service.list_executions(rule_id)
+        summaries = [_execution_summary(record) for record in records]
+        return {"items": summaries, "count": len(summaries)}
+
+    @app.get("/results/{execution_id}")
+    def get_result(execution_id: str) -> Dict[str, Any]:
+        try:
+            record = app.state.service.get_execution(execution_id)
+        except ExecutionNotFoundError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        return _execution_detail(record)
+
+    @app.get("/results/{execution_id}/export/{format}")
+    def export_result(execution_id: str, format: str) -> Response:
+        try:
+            record = app.state.service.get_execution(execution_id)
+        except ExecutionNotFoundError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+        if format == "json":
+            return _execution_result_to_dict(record.result)
+
+        if format == "csv":
+            csv_content = _records_to_csv(record.result.records)
+            return Response(content=csv_content)
+
+        raise HTTPException(status_code=400, detail="unsupported format")
 
     @app.post("/rules/{rule_id}/enable")
     def enable_rule(rule_id: str) -> Dict[str, Any]:
@@ -157,6 +210,37 @@ def _record_to_dict(record: Any) -> Dict[str, Any]:
 def _execution_result_to_dict(result: Any) -> Dict[str, Any]:
     contract = ExecutionResultContract.from_execution_result(result)
     return contract.to_payload()
+
+
+def _execution_summary(record: ExecutionRecord) -> Dict[str, Any]:
+    return {
+        "id": record.id,
+        "rule_id": record.rule_id,
+        "created_at": _isoformat(record.created_at),
+        "item_count": record.item_count,
+        "detail_count": record.detail_count,
+        "metadata": record.result.metadata,
+    }
+
+
+def _execution_detail(record: ExecutionRecord) -> Dict[str, Any]:
+    payload = _execution_summary(record)
+    payload["result"] = _execution_result_to_dict(record.result)
+    return payload
+
+
+def _records_to_csv(records: List[Dict[str, str]]) -> str:
+    if not records:
+        return ""
+
+    fieldnames = sorted({key for record in records for key in record.keys()})
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+    writer.writeheader()
+    for record in records:
+        row = {field: record.get(field, "") for field in fieldnames}
+        writer.writerow(row)
+    return buffer.getvalue()
 
 
 def _parse_rule(payload: Dict[str, Any]) -> RuleSchema:

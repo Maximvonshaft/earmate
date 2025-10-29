@@ -4,6 +4,7 @@ import pytest
 
 from earmate.rule_manager import RuleNotFoundError, RuleRepository, RuleService
 from earmate.schema import RuleSchema, SelectorConfig
+from earmate.storage import ResultRepository
 
 
 @pytest.fixture
@@ -45,13 +46,17 @@ def test_repository_crud(simple_rule: RuleSchema) -> None:
 
 def test_service_runs_rule(simple_rule: RuleSchema, fetcher) -> None:
     repository = RuleRepository()
-    service = RuleService(repository, fetcher=fetcher)
+    results = ResultRepository()
+    service = RuleService(repository, fetcher=fetcher, result_repository=results)
 
     created = service.create_rule(simple_rule)
     result = service.run_rule(created.id)
 
     assert len(result.records) == 2
     assert result.metadata["item_count"] == "2"
+    executions = service.list_executions()
+    assert len(executions) == 1
+    assert executions[0].rule_id == created.id
 
 
 def test_service_respects_enable_flag(simple_rule: RuleSchema, fetcher) -> None:
@@ -74,3 +79,17 @@ def test_service_test_run(fetcher) -> None:
 
     result = service.test_run(rule)
     assert len(result.records) == 3
+
+
+def test_delete_rule_removes_persisted_results(simple_rule: RuleSchema, fetcher) -> None:
+    repository = RuleRepository()
+    results = ResultRepository()
+    service = RuleService(repository, fetcher=fetcher, result_repository=results)
+    created = service.create_rule(simple_rule)
+    service.run_rule(created.id)
+
+    assert service.list_executions(created.id)
+
+    service.delete_rule(created.id)
+
+    assert service.list_executions(created.id) == []
