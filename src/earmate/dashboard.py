@@ -413,6 +413,23 @@ def render_dashboard_page() -> str:
                 gap: 0.75rem;
               }
 
+              .recorder-test-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                align-items: center;
+                margin-bottom: 0.5rem;
+              }
+
+              .recorder-test-actions[hidden] {
+                display: none;
+              }
+
+              .recorder-test-actions span {
+                font-size: 0.85rem;
+                color: #475569;
+              }
+
               .recorder-collapse > summary {
                 cursor: pointer;
                 font-weight: 600;
@@ -679,6 +696,11 @@ def render_dashboard_page() -> str:
                       </details>
                       <details id=\"recorder-test-panel\" class=\"recorder-collapse\">
                         <summary>最近一次试跑结果</summary>
+                        <div
+                          id=\"recorder-test-actions\"
+                          class=\"recorder-test-actions\"
+                          hidden
+                        ></div>
                         <pre id=\"recorder-test-preview\" class=\"recorder-preview\">
 尚未执行试跑。
                         </pre>
@@ -729,6 +751,7 @@ def render_dashboard_page() -> str:
                   recorderRulePreview: document.getElementById('recorder-rule-preview'),
                   recorderTestPanel: document.getElementById('recorder-test-panel'),
                   recorderTestPreview: document.getElementById('recorder-test-preview'),
+                  recorderTestActions: document.getElementById('recorder-test-actions'),
                 };
 
                 const state = {
@@ -1283,6 +1306,10 @@ def render_dashboard_page() -> str:
                   if (!elements.recorderTestPreview || !elements.recorderTestPanel) {
                     return;
                   }
+                  if (elements.recorderTestActions) {
+                    elements.recorderTestActions.innerHTML = '';
+                    elements.recorderTestActions.hidden = true;
+                  }
                   if (!result) {
                     elements.recorderTestPreview.textContent = '尚未执行试跑。';
                     elements.recorderTestPanel.open = false;
@@ -1309,6 +1336,57 @@ def render_dashboard_page() -> str:
                     lines.push(JSON.stringify(records[0], null, 2));
                   }
                   elements.recorderTestPreview.textContent = lines.join('\n');
+                  const monitoring =
+                    result.monitoring && typeof result.monitoring === 'object'
+                      ? result.monitoring
+                      : null;
+                  if (monitoring && elements.recorderTestActions) {
+                    elements.recorderTestActions.hidden = false;
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'link-button';
+                    button.textContent = '查看执行监控';
+                    button.addEventListener('click', async () => {
+                      switchView('monitoring');
+                      try {
+                        if (
+                          monitoring.rule_id &&
+                          typeof monitoring.rule_id === 'string' &&
+                          elements.ruleInput
+                        ) {
+                          elements.ruleInput.value = monitoring.rule_id;
+                        }
+                        await refresh();
+                        if (
+                          monitoring.run_id &&
+                          typeof monitoring.run_id === 'string' &&
+                          elements.runsTable
+                        ) {
+                          const rows = Array.from(elements.runsTable.querySelectorAll('tr'));
+                          const target = rows.find(
+                            (item) => item.dataset.runId === monitoring.run_id,
+                          );
+                          if (target) {
+                            target.click();
+                            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          }
+                        }
+                      } catch (error) {
+                        console.error(error);
+                      }
+                    });
+                    elements.recorderTestActions.append(button);
+                    if (typeof monitoring.run_id === 'string' && monitoring.run_id) {
+                      const runLabel = document.createElement('span');
+                      runLabel.textContent = `运行 ID：${monitoring.run_id}`;
+                      elements.recorderTestActions.append(runLabel);
+                    }
+                    if (typeof monitoring.rule_id === 'string' && monitoring.rule_id) {
+                      const ruleLabel = document.createElement('span');
+                      ruleLabel.textContent = `规则 ID：${monitoring.rule_id}`;
+                      elements.recorderTestActions.append(ruleLabel);
+                    }
+                  }
                   elements.recorderTestPanel.open = true;
                 }
 

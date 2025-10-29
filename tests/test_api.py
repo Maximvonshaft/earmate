@@ -148,7 +148,12 @@ def test_test_run_returns_execution_result() -> None:
 
     response = client.post("/rules/test-run", json=RULE_PAYLOAD)
     assert response.status_code == 200
-    assert response.json()["metadata"]["item_count"] == "1"
+    payload = response.json()
+    assert payload["metadata"]["item_count"] == "1"
+    monitoring = payload.get("monitoring") or {}
+    assert monitoring["run_id"]
+    assert monitoring["url"].endswith(monitoring["run_id"])
+    assert monitoring["rule_id"].startswith("preview:")
 
 
 def test_scheduler_trigger_runs_due_rules() -> None:
@@ -189,6 +194,7 @@ def test_monitoring_endpoints_expose_run_state() -> None:
     run_payload = run_response.json()
     metadata = run_payload["metadata"]
     run_id = metadata["run_id"]
+    assert run_payload["monitoring"]["run_id"] == run_id
 
     list_response = client.get("/monitoring/runs")
     assert list_response.status_code == 200
@@ -277,6 +283,10 @@ def test_publish_session_creates_rule_and_runs_test() -> None:
     assert rule_metadata["owner"] == "qa-team"
     assert rule_metadata["category"] == "news"
     assert payload["test_run"]["records"][0]["title"] == "Item A"
+    test_run_monitoring = payload["test_run"].get("monitoring")
+    assert test_run_monitoring is not None
+    assert test_run_monitoring["run_id"]
+    assert test_run_monitoring["rule_id"] == payload["rule"]["id"]
 
 
 def test_monitoring_dashboard_endpoint() -> None:
@@ -304,6 +314,9 @@ def test_contract_schemas_are_exposed() -> None:
     assert execution_contract.status_code == 200
     execution_schema = execution_contract.json()["json_schema"]
     assert "records" in execution_schema["properties"]
+    assert "monitoring" in execution_schema["properties"]
+    monitoring_schema = execution_schema["properties"]["monitoring"]
+    assert set(monitoring_schema["required"]) == {"run_id", "url"}
 
 
 def test_create_rule_returns_validation_errors() -> None:
