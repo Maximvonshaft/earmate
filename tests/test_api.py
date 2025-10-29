@@ -113,3 +113,29 @@ def test_disable_rule_removes_from_scheduler() -> None:
     trigger_response = client.post("/scheduler/trigger")
     assert trigger_response.status_code == 200
     assert trigger_response.json()["count"] == 0
+
+
+def test_contract_schemas_are_exposed() -> None:
+    client = build_client()
+
+    rule_contract = client.get("/contracts/rule")
+    assert rule_contract.status_code == 200
+    rule_schema = rule_contract.json()["json_schema"]
+    assert "entry" in rule_schema["properties"]
+    assert rule_schema["properties"]["entry"]["format"] == "uri"
+
+    execution_contract = client.get("/contracts/test-run")
+    assert execution_contract.status_code == 200
+    execution_schema = execution_contract.json()["json_schema"]
+    assert "records" in execution_schema["properties"]
+
+
+def test_create_rule_returns_validation_errors() -> None:
+    client = build_client()
+    payload = dict(RULE_PAYLOAD)
+    payload.pop("selectors")
+
+    response = client.post("/rules", json=payload)
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail[0]["loc"] == ["selectors"]
