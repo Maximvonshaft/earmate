@@ -40,21 +40,48 @@ class TestClient:
 
     def __init__(self, app: FastAPI) -> None:
         self.app = app
+        self.headers: Dict[str, str] = {}
 
     def request(
-        self, method: str, path: str, json: Optional[Dict[str, Any]] = None
+        self,
+        method: str,
+        path: str,
+        json: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
     ) -> _TestResponse:
-        response = self.app.handle_request(method, path, body=json)
+        combined_headers: Dict[str, str] = dict(self.headers)
+        if headers:
+            combined_headers.update(headers)
+        response = self.app.handle_request(
+            method,
+            path,
+            body=json,
+            headers=combined_headers or None,
+        )
         return _TestResponse(response)
 
-    def get(self, path: str) -> _TestResponse:
-        return self.request("GET", path)
+    def get(self, path: str, headers: Optional[Dict[str, str]] = None) -> _TestResponse:
+        return self.request("GET", path, headers=headers)
 
-    def post(self, path: str, json: Optional[Dict[str, Any]] = None) -> _TestResponse:
-        return self.request("POST", path, json=json)
+    def post(
+        self,
+        path: str,
+        json: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> _TestResponse:
+        return self.request("POST", path, json=json, headers=headers)
 
-    def put(self, path: str, json: Optional[Dict[str, Any]] = None) -> _TestResponse:
-        return self.request("PUT", path, json=json)
+    def put(
+        self,
+        path: str,
+        json: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> _TestResponse:
+        return self.request("PUT", path, json=json, headers=headers)
 
-    def delete(self, path: str) -> _TestResponse:
-        return self.request("DELETE", path)
+    def delete(
+        self,
+        path: str,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> _TestResponse:
+        return self.request("DELETE", path, headers=headers)

@@ -5,9 +5,9 @@ from __future__ import annotations
 import csv
 import io
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Set
 
-from fastapi import FastAPI, HTTPException, Response, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 
 from .contracts import (
     ContractValidationError,
@@ -37,6 +37,7 @@ def create_app(
     result_repository: Optional[ResultRepository] = None,
     monitoring: Optional[MonitoringService] = None,
     recorder: Optional[RecorderService] = None,
+    api_keys: Optional[Iterable[str]] = None,
 ) -> FastAPI:
     """Construct a FastAPI application with in-memory services by default."""
 
@@ -69,6 +70,10 @@ def create_app(
 
     recorder_service = recorder or RecorderService(RecorderRepository())
 
+    allowed_api_keys = _normalise_api_keys(api_keys)
+    require_api_key = _build_api_key_dependency(allowed_api_keys)
+    protected = [Depends(require_api_key)]
+
     app = FastAPI(title="EarMate API", version="0.1.0")
     app.state.repository = svc.repository
     app.state.service = svc
@@ -77,6 +82,7 @@ def create_app(
     app.state.monitoring = monitoring_service
     app.state.monitoring_repository = monitoring_repo
     app.state.recorder = recorder_service
+    app.state.api_keys = allowed_api_keys
 
     _sync_scheduler(app)
 
@@ -103,7 +109,7 @@ def create_app(
         ]
         return {"items": sessions, "count": len(sessions)}
 
-    @app.post("/recorder/sessions", status_code=status.HTTP_201_CREATED)
+    @app.post("/recorder/sessions", status_code=status.HTTP_201_CREATED, dependencies=protected)
     def create_session(payload: Dict[str, Any]) -> Dict[str, Any]:
         name = payload.get("name")
         if name is not None and (not isinstance(name, str) or not name.strip()):
@@ -126,7 +132,10 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
         return RecorderSessionContract(session=session).to_payload()
 
-    @app.post("/recorder/sessions/{session_id}/events")
+    @app.post(
+        "/recorder/sessions/{session_id}/events",
+        dependencies=protected,
+    )
     def append_event(session_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         try:
             session = app.state.recorder.record_event(session_id, payload)
@@ -147,7 +156,10 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
         return {"events": steps, "count": len(steps)}
 
-    @app.post("/recorder/sessions/{session_id}/compile")
+    @app.post(
+        "/recorder/sessions/{session_id}/compile",
+        dependencies=protected,
+    )
     def compile_session(
         session_id: str,
         payload: Optional[Dict[str, Any]] = None,
@@ -177,6 +189,91 @@ def create_app(
             "rule": RuleContract(rule=rule).to_payload(),
         }
 
+    @app.post(
+        "/recorder/sessions/{session_id}/publish",
+        status_code=status.HTTP_201_CREATED,
+        dependencies=protected,
+    )
+    def publish_session(
+        session_id: str,
+        payload: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        payload = payload or {}
+        name = payload.get("name")
+        if name is not None and (not isinstance(name, str) or not name.strip()):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="name must be non-empty string",
+            )
+        enable_value = payload.get("enable")
+        if enable_value is not None and not isinstance(enable_value, bool):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="enable must be a boolean",
+            )
+        test_run_value = payload.get("test_run", True)
+        if not isinstance(test_run_value, bool):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="test_run must be a boolean",
+            )
+        overrides = payload.get("overrides")
+        if overrides is not None and not isinstance(overrides, dict):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="overrides must be an object",
+            )
+
+        metadata_override = _parse_metadata(payload.get("metadata"))
+
+        try:
+            rule = app.state.recorder.compile_session(
+                session_id,
+                name=name.strip() if isinstance(name, str) else None,
+            )
+            session = app.state.recorder.get_session(session_id)
+        except RecorderSessionNotFoundError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        except RecorderSessionValidationError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+
+        if overrides:
+            base_payload = RuleContract(rule=rule).to_payload()
+            merged = _deep_merge_dict(base_payload, overrides)
+            rule = _parse_rule(merged)
+
+        if metadata_override:
+            rule.metadata.update(metadata_override)
+
+        rule.metadata["recorder_session"] = session.id
+        rule.metadata["recorder_events"] = str(session.event_count)
+
+        record = app.state.service.create_rule(rule)
+        if enable_value is False:
+            record = app.state.service.set_enabled(record.id, False)
+
+        _sync_scheduler(app)
+
+        response: Dict[str, Any] = {
+            "session": RecorderSessionContract(session=session).to_payload(),
+            "rule": _record_to_dict(record),
+        }
+
+        if test_run_value:
+            try:
+                result = app.state.service.test_run(rule)
+            except Exception as exc:  # pragma: no cover - depends on engine runtime
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"test run failed: {exc}",
+                ) from exc
+            response["test_run"] = _execution_result_to_dict(result)
+
+        return response
+
     @app.get("/rules")
     def list_rules() -> Dict[str, Any]:
         records = [
@@ -185,7 +282,7 @@ def create_app(
         ]
         return {"items": records, "count": len(records)}
 
-    @app.post("/rules", status_code=status.HTTP_201_CREATED)
+    @app.post("/rules", status_code=status.HTTP_201_CREATED, dependencies=protected)
     def create_rule(payload: Dict[str, Any]) -> Dict[str, Any]:
         rule = _parse_rule(payload)
         record = app.state.service.create_rule(rule)
@@ -200,7 +297,7 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
         return _record_to_dict(record)
 
-    @app.put("/rules/{rule_id}")
+    @app.put("/rules/{rule_id}", dependencies=protected)
     def update_rule(rule_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         rule = _parse_rule(payload)
         try:
@@ -210,7 +307,11 @@ def create_app(
         _sync_scheduler(app)
         return _record_to_dict(record)
 
-    @app.delete("/rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
+    @app.delete(
+        "/rules/{rule_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        dependencies=protected,
+    )
     def delete_rule(rule_id: str) -> Response:
         try:
             app.state.service.delete_rule(rule_id)
@@ -255,7 +356,7 @@ def create_app(
 
         raise HTTPException(status_code=400, detail="unsupported format")
 
-    @app.post("/rules/{rule_id}/enable")
+    @app.post("/rules/{rule_id}/enable", dependencies=protected)
     def enable_rule(rule_id: str) -> Dict[str, Any]:
         try:
             record = app.state.service.set_enabled(rule_id, True)
@@ -264,7 +365,7 @@ def create_app(
         _sync_scheduler(app)
         return _record_to_dict(record)
 
-    @app.post("/rules/{rule_id}/disable")
+    @app.post("/rules/{rule_id}/disable", dependencies=protected)
     def disable_rule(rule_id: str) -> Dict[str, Any]:
         try:
             record = app.state.service.set_enabled(rule_id, False)
@@ -273,7 +374,7 @@ def create_app(
         _sync_scheduler(app)
         return _record_to_dict(record)
 
-    @app.post("/rules/{rule_id}/run")
+    @app.post("/rules/{rule_id}/run", dependencies=protected)
     def run_rule(rule_id: str) -> Dict[str, Any]:
         try:
             result = app.state.service.run_rule(rule_id)
@@ -281,13 +382,13 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
         return _execution_result_to_dict(result)
 
-    @app.post("/rules/test-run")
+    @app.post("/rules/test-run", dependencies=protected)
     def test_run(payload: Dict[str, Any]) -> Dict[str, Any]:
         rule = _parse_rule(payload)
         result = app.state.service.test_run(rule)
         return _execution_result_to_dict(result)
 
-    @app.post("/scheduler/trigger")
+    @app.post("/scheduler/trigger", dependencies=protected)
     def trigger_scheduler() -> Dict[str, Any]:
         due = app.state.scheduler.pop_due()
         executions = []
@@ -446,3 +547,35 @@ def _parse_rule(payload: Dict[str, Any]) -> RuleSchema:
 
 def _isoformat(value: datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
+
+
+def _normalise_api_keys(keys: Optional[Iterable[str]]) -> Set[str]:
+    if keys is None:
+        keys = {"dev-secret"}
+    normalised = {item for item in keys if isinstance(item, str) and item}
+    if not normalised:
+        raise ValueError("api_keys must contain at least one non-empty string")
+    return normalised
+
+
+def _build_api_key_dependency(keys: Set[str], header_name: str = "X-API-Key"):
+    def dependency(api_key: Optional[str] = Header(None, alias=header_name)) -> str:
+        if not api_key or api_key not in keys:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="invalid api key",
+            )
+        return api_key
+
+    return dependency
+
+
+def _deep_merge_dict(base: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(base)
+    for key, value in overrides.items():
+        existing = merged.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            merged[key] = _deep_merge_dict(existing, value)
+        else:
+            merged[key] = value
+    return merged

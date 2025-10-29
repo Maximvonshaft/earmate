@@ -31,8 +31,10 @@ RULE_PAYLOAD = {
     },
 }
 
+TEST_API_KEY = "test-key"
 
-def build_client() -> TestClient:
+
+def build_client(*, with_api_key: bool = True) -> TestClient:
     def fake_fetcher(_url: str) -> str:  # pragma: no cover - simple stub
         return HTML_FIXTURE
 
@@ -52,8 +54,12 @@ def build_client() -> TestClient:
         scheduler=scheduler,
         result_repository=results,
         monitoring=monitoring,
+        api_keys={TEST_API_KEY},
     )
-    return TestClient(app)
+    client = TestClient(app)
+    if with_api_key:
+        client.headers.update({"X-API-Key": TEST_API_KEY})
+    return client
 
 
 def test_create_and_list_rules() -> None:
@@ -229,6 +235,40 @@ def test_recorder_session_endpoints() -> None:
     assert payload["session"]["metadata"]["source"] == "recorder"
 
 
+def test_publish_session_creates_rule_and_runs_test() -> None:
+    client = build_client()
+
+    session_id = client.post("/recorder/sessions", json={"name": "Publish Demo"}).json()["id"]
+    events = [
+        {"type": "navigate", "payload": {"url": "https://example.com/list"}},
+        {"type": "capture_selector", "payload": {"role": "list", "selector": "li.item"}},
+        {"type": "capture_selector", "payload": {"role": "title", "selector": "a.title"}},
+        {"type": "set_metadata", "payload": {"key": "source", "value": "recorder"}},
+    ]
+    for event in events:
+        event_response = client.post(
+            f"/recorder/sessions/{session_id}/events",
+            json=event,
+        )
+        assert event_response.status_code == 200
+
+    publish_response = client.post(
+        f"/recorder/sessions/{session_id}/publish",
+        json={
+            "metadata": {"owner": "qa-team"},
+            "overrides": {"metadata": {"category": "news"}},
+        },
+    )
+    assert publish_response.status_code == 201
+    payload = publish_response.json()
+    assert payload["session"]["id"] == session_id
+    rule_metadata = payload["rule"]["rule"]["metadata"]
+    assert rule_metadata["recorder_session"] == session_id
+    assert rule_metadata["owner"] == "qa-team"
+    assert rule_metadata["category"] == "news"
+    assert payload["test_run"]["records"][0]["title"] == "Item A"
+
+
 def test_monitoring_dashboard_endpoint() -> None:
     client = build_client()
     rule_id = client.post("/rules", json=RULE_PAYLOAD).json()["id"]
@@ -265,3 +305,17 @@ def test_create_rule_returns_validation_errors() -> None:
     assert response.status_code == 422
     detail = response.json()["detail"]
     assert detail[0]["loc"] == ["selectors"]
+
+
+def test_requests_without_api_key_are_rejected() -> None:
+    client = build_client(with_api_key=False)
+
+    missing_header = client.post("/rules", json=RULE_PAYLOAD)
+    assert missing_header.status_code == 401
+
+    invalid_header = client.post(
+        "/rules",
+        json=RULE_PAYLOAD,
+        headers={"X-API-Key": "wrong"},
+    )
+    assert invalid_header.status_code == 401
