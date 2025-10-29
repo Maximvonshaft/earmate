@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Response, status
 
 from .contracts import ContractValidationError, ExecutionResultContract, RuleContract
+from .monitoring import MonitoringRepository, MonitoringService, TaskRunNotFoundError
 from .rule_manager import RuleNotFoundError, RuleRepository, RuleService
 from .scheduler import InMemoryScheduler
 from .schema import RuleSchema
@@ -22,13 +23,21 @@ def create_app(
     repository: Optional[RuleRepository] = None,
     scheduler: Optional[InMemoryScheduler] = None,
     result_repository: Optional[ResultRepository] = None,
+    monitoring: Optional[MonitoringService] = None,
 ) -> FastAPI:
     """Construct a FastAPI application with in-memory services by default."""
+
+    monitoring_service = monitoring
+    if monitoring_service is None:
+        monitoring_repo = MonitoringRepository()
+        monitoring_service = MonitoringService(monitoring_repo)
+    else:
+        monitoring_repo = monitoring_service.repository
 
     if service is None:
         repo = repository or RuleRepository()
         results = result_repository or ResultRepository()
-        svc = RuleService(repo, result_repository=results)
+        svc = RuleService(repo, result_repository=results, monitoring=monitoring_service)
     else:
         svc = service
         repo = repository or svc.repository
@@ -39,6 +48,10 @@ def create_app(
             results = svc.result_repository or ResultRepository()
             if svc.result_repository is None:
                 svc.result_repository = results
+        if svc.monitoring is None:
+            svc.monitoring = monitoring_service
+        monitoring_repo = svc.monitoring.repository
+        monitoring_service = svc.monitoring
     sched = scheduler or InMemoryScheduler()
 
     app = FastAPI(title="EarMate API", version="0.1.0")
@@ -46,6 +59,8 @@ def create_app(
     app.state.service = svc
     app.state.scheduler = sched
     app.state.results = results
+    app.state.monitoring = monitoring_service
+    app.state.monitoring_repository = monitoring_repo
 
     _sync_scheduler(app)
 
@@ -183,6 +198,24 @@ def create_app(
             })
         return {"executions": executions, "count": len(executions)}
 
+    @app.get("/monitoring/runs")
+    def list_runs(rule_id: Optional[str] = None) -> Dict[str, Any]:
+        runs = list(app.state.monitoring.list_runs(rule_id))
+        payload = [_run_to_dict(run) for run in runs]
+        return {"items": payload, "count": len(payload)}
+
+    @app.get("/monitoring/runs/{run_id}")
+    def get_run(run_id: str) -> Dict[str, Any]:
+        try:
+            run = app.state.monitoring.get(run_id)
+        except TaskRunNotFoundError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        return _run_to_dict(run)
+
+    @app.get("/monitoring/summary")
+    def monitoring_summary() -> Dict[str, Any]:
+        return app.state.monitoring.summary()
+
     return app
 
 
@@ -205,6 +238,30 @@ def _record_to_dict(record: Any) -> Dict[str, Any]:
         "rule": contract.to_payload(),
     }
     return data
+
+
+def _run_to_dict(run: Any) -> Dict[str, Any]:
+    return {
+        "id": run.id,
+        "rule_id": run.rule_id,
+        "status": run.status.value if hasattr(run.status, "value") else run.status,
+        "created_at": _isoformat(run.created_at),
+        "updated_at": _isoformat(run.updated_at),
+        "started_at": _isoformat(run.started_at) if run.started_at else None,
+        "finished_at": _isoformat(run.finished_at) if run.finished_at else None,
+        "duration_ms": run.duration_ms,
+        "metrics": run.metrics,
+        "error_message": run.error_message,
+        "execution_id": run.execution_id,
+        "logs": [
+            {
+                "timestamp": _isoformat(entry.timestamp),
+                "level": entry.level,
+                "message": entry.message,
+            }
+            for entry in run.logs
+        ],
+    }
 
 
 def _execution_result_to_dict(result: Any) -> Dict[str, Any]:
